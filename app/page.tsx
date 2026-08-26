@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BoothState, GridCount, PhotoSlot } from '../lib/types';
+import type { BoothState, GridCount, PhotoSlot, FrameRatio } from '../lib/types';
 import { defaultState, decodeState, encodeState, makeSlots } from '../lib/state';
 import { renderBooth } from '../lib/render';
 import { downloadDataURL, fileToCompressedDataURL, detectFrameRatio } from '../lib/image';
@@ -16,6 +16,29 @@ import {
   FlipIcon,
   GridIcon,
 } from '../components/icons';
+
+/** Tailwind grid class for the preview, based on grid count + frame orientation. */
+function gridClass(grid: GridCount, ratio: FrameRatio): string {
+  const portrait = ratio === '9:16';
+  if (grid === 1) return 'grid-cols-1';
+  if (grid === 2) return portrait ? 'grid-cols-1 grid-rows-2' : 'grid-cols-2';
+  // grid === 3
+  return portrait ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2 grid-rows-2';
+}
+
+/** Per-slot span class so the layout matches the render. */
+function slotClass(grid: GridCount, ratio: FrameRatio, i: number): string {
+  if (grid === 1) return '';
+  const portrait = ratio === '9:16';
+  if (grid === 2) return '';
+  // grid === 3
+  if (portrait) {
+    // first photo spans full width on top
+    return i === 0 ? 'col-span-2' : '';
+  }
+  // landscape: first photo spans 2 rows on the left
+  return i === 0 ? 'row-span-2' : '';
+}
 
 export default function Home() {
   const [state, setState] = useState<BoothState>(() => {
@@ -79,7 +102,7 @@ export default function Home() {
   const handleFrameUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await fileToCompressedDataURL(file, 1920, 0.92);
+    const dataUrl = await fileToCompressedDataURL(file, 1920, undefined, 'image/png');
     const img = new Image();
     img.onload = () => {
       const ratio = detectFrameRatio(img);
@@ -206,23 +229,12 @@ export default function Home() {
             style={{ aspectRatio: state.frameRatio === '9:16' ? '9 / 16' : '16 / 9' }}
           >
             <div
-              className={`grid h-full w-full gap-1.5 p-1.5 ${
-                state.grid === 1
-                  ? 'grid-cols-1'
-                  : state.grid === 2
-                    ? 'grid-cols-2'
-                    : 'grid-cols-2 grid-rows-2'
-              }`}
-              style={
-                state.grid === 3
-                  ? { gridTemplateRows: '1fr 1fr' }
-                  : undefined
-              }
+              className={`grid h-full w-full gap-1.5 p-1.5 ${gridClass(state.grid, state.frameRatio)}`}
             >
               {state.slots.map((slot, i) => (
                 <div
                   key={slot.id}
-                  className={state.grid === 3 && i === 0 ? 'row-span-2' : ''}
+                  className={slotClass(state.grid, state.frameRatio, i)}
                 >
                   <PhotoSlotView
                     slot={slot}

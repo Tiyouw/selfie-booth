@@ -20,7 +20,8 @@ export function fileToDataURL(file: File): Promise<string> {
 export async function fileToCompressedDataURL(
   file: File,
   maxDim = 1280,
-  quality = 0.82,
+  quality = 0.92,
+  mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ): Promise<string> {
   const dataUrl = await fileToDataURL(file);
   const img = await loadImage(dataUrl);
@@ -31,8 +32,9 @@ export async function fileToCompressedDataURL(
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d')!;
+  // PNG preserves alpha (transparency); JPEG flattens to black.
   ctx.drawImage(img, 0, 0, w, h);
-  return canvas.toDataURL('image/jpeg', quality);
+  return canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : quality);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

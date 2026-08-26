@@ -13,41 +13,64 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** Layout geometry for a given grid count inside a (w x h) canvas. */
-export function gridLayout(grid: GridCount, w: number, h: number, gap: number) {
-  let cols = 1;
-  let rows = 1;
-  if (grid === 2) {
-    cols = 2;
-    rows = 1;
-  } else if (grid === 3) {
-    cols = 2;
-    rows = 2; // first photo spans 2 rows on the left
-  }
+export function gridLayout(
+  grid: GridCount,
+  w: number,
+  h: number,
+  gap: number,
+  isPortrait = false,
+) {
   const pad = gap;
   const innerW = w - pad * 2;
   const innerH = h - pad * 2;
+
+  const cells: { x: number; y: number; w: number; h: number }[] = [];
+
+  if (grid === 1) {
+    cells.push({ x: pad, y: pad, w: innerW, h: innerH });
+    return cells;
+  }
+
+  if (isPortrait) {
+    // Portrait (9:16): photos stack top-to-bottom.
+    const rows = grid === 2 ? 2 : 3;
+    const cellH = (innerH - gap * (rows - 1)) / rows;
+    if (grid === 2) {
+      for (let i = 0; i < 2; i++) {
+        cells.push({ x: pad, y: pad + i * (cellH + gap), w: innerW, h: cellH });
+      }
+    } else {
+      // 3 photos: top spans full width, bottom split into 2 columns
+      const topH = cellH;
+      const bottomH = innerH - topH - gap;
+      const cellW = (innerW - gap) / 2;
+      cells.push({ x: pad, y: pad, w: innerW, h: topH });
+      cells.push({ x: pad, y: pad + topH + gap, w: cellW, h: bottomH });
+      cells.push({ x: pad + cellW + gap, y: pad + topH + gap, w: cellW, h: bottomH });
+    }
+    return cells;
+  }
+
+  // Landscape (16:9): photos side-by-side.
+  const cols = grid === 2 ? 2 : 2; // 2 and 3 both use 2 columns
+  const rows = grid === 2 ? 1 : 2;
   const cellW = (innerW - gap * (cols - 1)) / cols;
   const cellH = (innerH - gap * (rows - 1)) / rows;
 
-  const cells = [];
-  if (grid === 1) {
-    cells.push({ x: pad, y: pad, w: innerW, h: innerH });
-  } else if (grid === 2) {
+  if (grid === 2) {
     for (let i = 0; i < 2; i++) {
       cells.push({ x: pad + i * (cellW + gap), y: pad, w: cellW, h: innerH });
     }
   } else {
     // 3 photos: left tall (spans 2 rows), right top, right bottom
-    const tallH = innerH;
-    const left = { x: pad, y: pad, w: cellW, h: tallH };
-    const rightTop = { x: pad + cellW + gap, y: pad, w: cellW, h: cellH };
-    const rightBottom = {
+    cells.push({ x: pad, y: pad, w: cellW, h: innerH });
+    cells.push({ x: pad + cellW + gap, y: pad, w: cellW, h: cellH });
+    cells.push({
       x: pad + cellW + gap,
       y: pad + cellH + gap,
       w: cellW,
       h: cellH,
-    };
-    cells.push(left, rightTop, rightBottom);
+    });
   }
   return cells;
 }
@@ -123,7 +146,7 @@ export async function renderBooth(state: BoothState): Promise<string> {
   ctx.fillRect(0, 0, W, H);
 
   const gap = Math.round(Math.min(W, H) * 0.025);
-  const cells = gridLayout(state.grid, W, H, gap);
+  const cells = gridLayout(state.grid, W, H, gap, isPortrait);
 
   // draw photos
   for (let i = 0; i < state.slots.length; i++) {
