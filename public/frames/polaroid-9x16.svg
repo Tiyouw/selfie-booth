@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+<path fill="#faf9f6" fill-rule="evenodd" d="M0 0H1080V1920H0Z M58 48H1022A10 10 0 0 1 1032 58V1700A10 10 0 0 1 1022 1710H58A10 10 0 0 1 48 1700V58A10 10 0 0 1 58 48Z"/>
+<text x="540.0" y="1833.2" text-anchor="middle" font-family="Poppins, Helvetica, Arial, sans-serif" font-weight="700" font-size="52" fill="#1a1a1a" letter-spacing="2">SELFIE BOOTH</text>
+<circle cx="240.0" cy="1815.0" r="7" fill="#FF7E1D"/>
+<circle cx="840.0" cy="1815.0" r="7" fill="#1C64F2"/>
+</svg>

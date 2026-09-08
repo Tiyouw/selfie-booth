@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF7E1D"/><stop offset="1" stop-color="#1C64F2"/></linearGradient>
+<filter id="glow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="14"/></filter>
+</defs>
+<path fill="#07070a" fill-rule="evenodd" d="M0 0H1920V1080H0Z M80 56H1840A24 24 0 0 1 1864 80V1000A24 24 0 0 1 1840 1024H80A24 24 0 0 1 56 1000V80A24 24 0 0 1 80 56Z"/>
+<rect x="50" y="50" width="1820" height="980" rx="30" fill="none" stroke="url(#g)" stroke-width="10" opacity="0.7" filter="url(#glow)"/>
+<rect x="50" y="50" width="1820" height="980" rx="30" fill="none" stroke="url(#g)" stroke-width="4"/>
+<rect x="20" y="20" width="1880" height="1040" rx="40" fill="none" stroke="url(#g)" stroke-width="2" opacity="0.5"/>
+</svg>

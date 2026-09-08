@@ -10,8 +10,11 @@ selfie-booth/
 │   ├── layout.tsx  # font Poppins + metadata
 │   ├── page.tsx    # halaman utama + semua kontrol
 │   └── globals.css # styling dark theme ala himasif.id
-├── components/     # PhotoSlotView, icons
-├── lib/            # types, state (encode/decode), render (canvas), image
+├── components/     # PhotoSlotView, CameraModal, ShareModal, icons, useToast
+├── lib/            # types, layout (geometri bersama), state, share, render, image, frames
+├── public/frames/  # frame built-in (SVG)
+├── scripts/        # gen-frames.py (regenerate frame default)
+├── docs/           # SHARE_BACKEND.md (rencana backend VPS)
 ├── vercel.json     # config deploy Vercel
 └── package.json
 ```
@@ -65,7 +68,16 @@ untuk subdomain ini). CNAME spesifik selalu menang atas wildcard.
 
 ## Catatan Teknis
 
-- **Share link**: desain di-encode ke URL hash (lz-string). Tanpa database/backend.
-  Foto asli tersimpan di URL, jadi URL bisa panjang (normal untuk use case event).
-- **Kamera**: butuh HTTPS (Vercel otomatis) + izin browser.
-- **Download**: render canvas 3× (1080×1920 untuk 9:16, 1920×1080 untuk 16:9).
+- **Frame built-in**: SVG di `public/frames/`, terdaftar di `lib/frames.ts`
+  (`inset` = area transparan tempat foto diletakkan). Tambah frame baru: taruh
+  PNG/SVG 1920×1080 atau 1080×1920, lalu tambahkan entri di `BUILTIN_FRAMES`.
+  Frame default bisa di-regenerate dengan `python3 scripts/gen-frames.py`.
+- **Share link**: desain di-encode ke URL hash (`#d=…`, lz-string). Foto dikecilkan
+  ke 720px agar link tetap ≈10–15 KB per foto; modal share memberi peringatan bila
+  link terlalu panjang. Rencana backend VPS + id pendek: lihat `docs/SHARE_BACKEND.md`.
+- **Draft**: tersimpan otomatis di `localStorage` (`selfie-booth:draft:v2`).
+- **Kamera**: butuh HTTPS (Vercel otomatis) + izin browser. Ada countdown 3s/5s,
+  mirror, ganti kamera, dan preview sebelum dipakai.
+- **Export**: PNG 1920×1080 (16:9) / 1080×1920 (9:16). Preview dan export memakai
+  perhitungan layout yang sama (`lib/layout.ts`) sehingga hasil identik.
+- **Foto**: upload/kamera dikompres ke JPEG ≤1280px sebelum disimpan di state.

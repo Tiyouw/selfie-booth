@@ -32,6 +32,29 @@ body {
 .grabbable { cursor: grab; }
 .grabbable:active { cursor: grabbing; }
 
+/* subtle checkerboard so transparent frame areas are visible */
+.preview-checker {
+  background-color: #101010;
+  background-image:
+    linear-gradient(45deg, #161616 25%, transparent 25%, transparent 75%, #161616 75%),
+    linear-gradient(45deg, #161616 25%, transparent 25%, transparent 75%, #161616 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.toast-in { animation: toast-in 0.18s ease-out; }
+
+@keyframes countdown-pop {
+  0% { transform: scale(1.4); opacity: 0; }
+  30% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.9; }
+}
+.countdown-pop { animation: countdown-pop 1s ease-out; }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #101010; }
 ::-webkit-scrollbar-thumb { background: #292929; border-radius: 8px; }
