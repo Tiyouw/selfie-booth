@@ -6,3 +6,5 @@ out
 .env*
 .vercel
 .vercel_token
+
+*.tsbuildinfo

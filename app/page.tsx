@@ -1,78 +1,94 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BoothState, GridCount, PhotoSlot, FrameRatio } from '../lib/types';
-import { defaultState, decodeState, encodeState, makeSlots } from '../lib/state';
-import { renderBooth } from '../lib/render';
-import { downloadDataURL, fileToCompressedDataURL, detectFrameRatio } from '../lib/image';
+import type { BoothState, FrameRatio, GridCount, PhotoSlot } from '../lib/types';
+import { clearDraft, defaultState, hasPhotos, loadDraft, saveDraft, visibleSlots } from '../lib/state';
+import { renderBoothBlob } from '../lib/render';
+import { downloadBlob, fileToFrame, fileToPhotoDataURL } from '../lib/image';
+import { boothLayout, clamp, MAX_ZOOM, MIN_ZOOM } from '../lib/layout';
+import { findBuiltinFrame, frameVariant, framesForRatio, isBuiltinFrame } from '../lib/frames';
+import { shareProvider, type ShareLink } from '../lib/share';
 import PhotoSlotView from '../components/PhotoSlotView';
+import CameraModal from '../components/CameraModal';
+import ShareModal from '../components/ShareModal';
+import { Toast, useToast } from '../components/useToast';
 import {
   CameraIcon,
-  DownloadIcon,
-  ShareIcon,
   CheckIcon,
-  XIcon,
-  UploadIcon,
-  FlipIcon,
+  DownloadIcon,
   GridIcon,
+  ImageIcon,
+  LandscapeIcon,
+  PortraitIcon,
+  ResetIcon,
+  ShareIcon,
+  UploadIcon,
+  XIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from '../components/icons';
 
-/** Tailwind grid class for the preview, based on grid count + frame orientation. */
-function gridClass(grid: GridCount, ratio: FrameRatio): string {
-  const portrait = ratio === '9:16';
-  if (grid === 1) return 'grid-cols-1';
-  if (grid === 2) return portrait ? 'grid-cols-1 grid-rows-2' : 'grid-cols-2';
-  // grid === 3
-  return portrait ? 'grid-cols-2 grid-rows-2' : 'grid-cols-2 grid-rows-2';
-}
-
-/** Per-slot span class so the layout matches the render. */
-function slotClass(grid: GridCount, ratio: FrameRatio, i: number): string {
-  if (grid === 1) return '';
-  const portrait = ratio === '9:16';
-  if (grid === 2) return '';
-  // grid === 3
-  if (portrait) {
-    // first photo spans full width on top
-    return i === 0 ? 'col-span-2' : '';
-  }
-  // landscape: first photo spans 2 rows on the left
-  return i === 0 ? 'row-span-2' : '';
-}
-
 export default function Home() {
-  const [state, setState] = useState<BoothState>(() => {
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash.replace(/^#/, '');
-      if (hash) {
-        const decoded = decodeState(hash);
-        if (decoded) return decoded;
-      }
-    }
-    return defaultState(3);
-  });
-
+  const [state, setState] = useState<BoothState>(() => defaultState(3));
+  const [hydrated, setHydrated] = useState(false);
   const [activeSlot, setActiveSlot] = useState(0);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
-  const [showCamera, setShowCamera] = useState(false);
   const [captureTarget, setCaptureTarget] = useState<number | null>(null);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareLink, setShareLink] = useState<ShareLink | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [busy, setBusy] = useState<'download' | 'share' | null>(null);
+  const { toast, show } = useToast();
+  const frameInputRef = useRef<HTMLInputElement>(null);
 
-  const shareHash = useMemo(() => encodeState(state), [state]);
-
-  // persist to URL hash on change
+  // Load: shared link first, then local draft.
   useEffect(() => {
-    const url = `${window.location.origin}${window.location.pathname}#${shareHash}`;
-    try {
-      window.history.replaceState(null, '', url);
-    } catch {
-      /* URL may be too long; ignore */
-    }
-  }, [shareHash]);
+    let cancelled = false;
+    (async () => {
+      const shared = await shareProvider.resolve(window.location);
+      if (cancelled) return;
+      if (shared) {
+        setState(shared);
+        // strip the payload so edits don't look like they update the shared link
+        window.history.replaceState(null, '', window.location.pathname);
+        show('Desain dari link berhasil dimuat', 'success');
+      } else {
+        const draft = loadDraft();
+        if (draft) {
+          setState(draft);
+          if (hasPhotos(draft)) show('Draft terakhir dipulihkan', 'info');
+        }
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [show]);
+
+  // Autosave draft (debounced).
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => saveDraft(state), 400);
+    return () => clearTimeout(t);
+  }, [state, hydrated]);
+
+  const layout = useMemo(() => boothLayout(state), [state]);
+  const slots = visibleSlots(state);
+  const filled = slots.filter((s) => s.src).length;
+  const activePhoto = slots[activeSlot] as PhotoSlot | undefined;
+  const customFrame = !!state.frameSrc && !isBuiltinFrame(state.frameSrc);
+
+  // Preview scale: measure the preview box to convert export px → screen px.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewWidth, setPreviewWidth] = useState(0);
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setPreviewWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = previewWidth ? previewWidth / layout.w : 1;
 
   const updateSlot = useCallback((index: number, patch: Partial<PhotoSlot>) => {
     setState((s) => ({
@@ -81,115 +97,196 @@ export default function Home() {
     }));
   }, []);
 
-  const setGrid = useCallback((grid: GridCount) => {
-    setState((s) => {
-      const slots = makeSlots(grid);
-      // carry over existing photos where possible
-      for (let i = 0; i < Math.min(grid, s.slots.length); i++) {
-        slots[i] = { ...slots[i], ...s.slots[i], id: slots[i].id };
-      }
-      return { ...s, grid, slots };
-    });
-  }, []);
-
-  const onPhotoChange = useCallback(
-    (index: number, src: string) => {
-      updateSlot(index, { src: src || null, zoom: 1, ox: 0, oy: 0 });
+  const setPhoto = useCallback(
+    (index: number, src: string | null) => {
+      updateSlot(index, { src, zoom: 1, ox: 0, oy: 0 });
+      setActiveSlot(index);
     },
     [updateSlot],
   );
 
-  const handleFrameUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await fileToCompressedDataURL(file, 1920, undefined, 'image/png');
-    const img = new Image();
-    img.onload = () => {
-      const ratio = detectFrameRatio(img);
-      setState((s) => ({ ...s, frameSrc: dataUrl, frameRatio: ratio }));
-      setNotice('Frame diterapkan ✓');
-      setTimeout(() => setNotice(null), 2000);
-    };
-    img.src = dataUrl;
-    e.target.value = '';
+  const setGrid = useCallback((grid: GridCount) => {
+    setState((s) => ({ ...s, grid }));
+    setActiveSlot((a) => Math.min(a, grid - 1));
   }, []);
 
-  const clearFrame = useCallback(() => {
-    setState((s) => ({ ...s, frameSrc: null }));
-  }, []);
-
-  // drag arrange
-  const onDragStart = useCallback((i: number) => setDragIndex(i), []);
-  const onDragOver = useCallback((i: number) => setOverIndex(i), []);
-  const onDrop = useCallback(() => {
-    if (dragIndex === null || overIndex === null || dragIndex === overIndex) {
-      setDragIndex(null);
-      setOverIndex(null);
-      return;
-    }
+  const setRatio = useCallback((ratio: FrameRatio) => {
     setState((s) => {
-      const slots = [...s.slots];
-      const [moved] = slots.splice(dragIndex, 1);
-      slots.splice(overIndex, 0, moved);
-      return { ...s, slots };
+      if (s.frameRatio === ratio) return s;
+      const variant = frameVariant(s.frameSrc, ratio);
+      return { ...s, frameRatio: ratio, frameSrc: variant ? variant.src : s.frameSrc };
     });
-    setDragIndex(null);
-    setOverIndex(null);
-  }, [dragIndex, overIndex]);
-
-  const startCapture = useCallback((index: number) => {
-    setCaptureTarget(index);
-    setShowCamera(true);
   }, []);
 
-  const handleDownload = useCallback(async () => {
-    setDownloading(true);
-    try {
-      const dataUrl = await renderBooth(state);
-      downloadDataURL(dataUrl, `selfie-booth-${Date.now()}.png`);
-    } catch (e) {
-      console.error(e);
-      setNotice('Gagal render. Coba lagi.');
-      setTimeout(() => setNotice(null), 2000);
-    } finally {
-      setDownloading(false);
-    }
-  }, [state]);
+  const chooseFrame = useCallback((src: string | null) => {
+    setState((s) => {
+      const builtin = findBuiltinFrame(src);
+      return { ...s, frameSrc: src, frameRatio: builtin ? builtin.ratio : s.frameRatio };
+    });
+  }, []);
 
-  const handleShare = useCallback(() => {
-    const url = `${window.location.origin}${window.location.pathname}#${shareHash}`;
-    setShareUrl(url);
-  }, [shareHash]);
+  const uploadPhoto = useCallback(
+    async (index: number, file: File) => {
+      try {
+        const src = await fileToPhotoDataURL(file);
+        setPhoto(index, src);
+      } catch (e) {
+        show((e as Error).message || 'Gagal memproses gambar', 'error');
+      }
+    },
+    [setPhoto, show],
+  );
 
-  const copyShare = useCallback(async () => {
-    if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setNotice('Gagal copy. Salin manual.');
-      setTimeout(() => setNotice(null), 2000);
-    }
-  }, [shareUrl]);
+  const pickFile = useCallback(
+    (index: number) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const f = input.files?.[0];
+        if (f) uploadPhoto(index, f);
+      };
+      input.click();
+    },
+    [uploadPhoto],
+  );
 
-  const gridCells = useMemo(() => {
-    const g = state.grid;
-    return g === 1
-      ? 'grid-cols-1'
-      : g === 2
-        ? 'grid-cols-2'
-        : 'grid-cols-2 grid-rows-2';
+  const firstEmptyOrActive = () => {
+    const i = slots.findIndex((s) => !s.src);
+    return i >= 0 ? i : activeSlot;
+  };
+
+  const moveSlot = useCallback((index: number, dir: -1 | 1) => {
+    setState((s) => {
+      const j = index + dir;
+      if (j < 0 || j >= s.grid) return s;
+      const slots = [...s.slots];
+      [slots[index], slots[j]] = [slots[j], slots[index]];
+      return { ...s, slots: slots.map((sl, i) => ({ ...sl, id: `slot-${i}` })) };
+    });
+    setActiveSlot(clamp(index + dir, 0, state.grid - 1));
   }, [state.grid]);
 
-  const activePhoto = state.slots[activeSlot];
+  const handleFrameUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const { src, ratio } = await fileToFrame(file);
+        setState((s) => ({ ...s, frameSrc: src, frameRatio: ratio }));
+        show(`Frame custom diterapkan (${ratio})`, 'success');
+      } catch (err) {
+        show((err as Error).message || 'Gagal memuat frame', 'error');
+      }
+    },
+    [show],
+  );
+
+  const resetAll = useCallback(() => {
+    if (hasPhotos(state) && !window.confirm('Mulai baru? Semua foto akan dihapus.')) return;
+    clearDraft();
+    setState(defaultState(3));
+    setActiveSlot(0);
+    setShareLink(null);
+  }, [state]);
+
+  const handleDownload = useCallback(async () => {
+    setBusy('download');
+    try {
+      const blob = await renderBoothBlob(state);
+      downloadBlob(blob, `selfie-booth-${Date.now()}.png`);
+      show('PNG berhasil diunduh', 'success');
+    } catch (e) {
+      console.error(e);
+      show('Gagal membuat PNG. Coba lagi.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }, [state, show]);
+
+  const canShareFiles =
+    typeof navigator !== 'undefined' && typeof navigator.share === 'function' && !!navigator.canShare;
+
+  const handleShareImage = useCallback(async () => {
+    setBusy('share');
+    try {
+      const blob = await renderBoothBlob(state);
+      const file = new File([blob], 'selfie-booth.png', { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Selfie Booth' });
+      } else {
+        downloadBlob(blob, file.name);
+        show('Share file tidak didukung, PNG diunduh', 'info');
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') show('Gagal membagikan gambar', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }, [state, show]);
+
+  const openShare = useCallback(async () => {
+    setShareOpen(true);
+    setShareLoading(true);
+    try {
+      setShareLink(await shareProvider.createLink(state));
+    } catch {
+      show('Gagal membuat link', 'error');
+    } finally {
+      setShareLoading(false);
+    }
+  }, [state, show]);
+
+  // Keyboard: zoom / nudge / delete for the active photo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (captureTarget !== null || shareOpen) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      const slot = slots[activeSlot];
+      if (!slot?.src) return;
+      const step = 0.05;
+      switch (e.key) {
+        case '+':
+        case '=':
+          updateSlot(activeSlot, { zoom: clamp(slot.zoom + 0.1, MIN_ZOOM, MAX_ZOOM) });
+          break;
+        case '-':
+          updateSlot(activeSlot, { zoom: clamp(slot.zoom - 0.1, MIN_ZOOM, MAX_ZOOM) });
+          break;
+        case 'ArrowLeft':
+          updateSlot(activeSlot, { ox: clamp(slot.ox + step, -1, 1) });
+          break;
+        case 'ArrowRight':
+          updateSlot(activeSlot, { ox: clamp(slot.ox - step, -1, 1) });
+          break;
+        case 'ArrowUp':
+          updateSlot(activeSlot, { oy: clamp(slot.oy + step, -1, 1) });
+          break;
+        case 'ArrowDown':
+          updateSlot(activeSlot, { oy: clamp(slot.oy - step, -1, 1) });
+          break;
+        case 'Delete':
+        case 'Backspace':
+          setPhoto(activeSlot, null);
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [slots, activeSlot, captureTarget, shareOpen, updateSlot, setPhoto]);
+
+  const portrait = state.frameRatio === '9:16';
 
   return (
-    <main className="glow-bg min-h-screen">
-      {/* Header */}
-      <header className="border-b border-white/5">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-          <div className="flex items-center gap-2">
+    <main className="glow-bg min-h-screen pb-16">
+      <header className="sticky top-0 z-30 border-b border-white/5 bg-ink-950/80 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3">
+          <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-brand-deep text-ink-950">
               <CameraIcon size={18} />
             </div>
@@ -202,100 +299,201 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleShare}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-sm font-medium hover:bg-white/5"
+              type="button"
+              onClick={resetAll}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-600 hover:bg-white/5 hover:text-cream"
+              title="Mulai desain baru"
             >
-              <ShareIcon size={16} /> <span className="hidden sm:inline">Share</span>
+              <ResetIcon size={16} /> <span className="hidden sm:inline">Mulai baru</span>
             </button>
             <button
+              type="button"
+              onClick={openShare}
+              disabled={filled === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              title={filled === 0 ? 'Tambahkan foto dulu' : 'Bagikan'}
+            >
+              <ShareIcon size={16} /> <span className="hidden sm:inline">Bagikan</span>
+            </button>
+            <button
+              type="button"
               onClick={handleDownload}
-              disabled={downloading}
-              className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-ink-950 hover:bg-brand-bright disabled:opacity-50"
+              disabled={busy !== null || filled === 0}
+              className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-ink-950 hover:bg-brand-bright disabled:cursor-not-allowed disabled:opacity-40"
+              title={filled === 0 ? 'Tambahkan foto dulu' : 'Download PNG'}
             >
               <DownloadIcon size={16} />
-              {downloading ? 'Menyiapkan…' : <span className="hidden sm:inline">Download PNG</span>}
+              <span className="hidden sm:inline">{busy === 'download' ? 'Menyiapkan…' : 'Download PNG'}</span>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-6xl gap-6 px-5 py-6 lg:grid-cols-[1fr_340px]">
-        {/* Preview area */}
-        <section>
+      <div className="mx-auto grid max-w-6xl gap-6 px-5 py-6 lg:grid-cols-[1fr_360px]">
+        {/* Preview */}
+        <section className="min-w-0">
+          <div className="mb-3 flex items-center justify-between text-xs text-ink-600">
+            <span>
+              Preview · {layout.w}×{layout.h}px
+            </span>
+            <span className={filled === state.grid ? 'text-emerald-400' : ''}>
+              {filled === state.grid ? (
+                <span className="inline-flex items-center gap-1">
+                  <CheckIcon size={13} /> Semua foto terisi
+                </span>
+              ) : (
+                `${filled}/${state.grid} foto terisi`
+              )}
+            </span>
+          </div>
+
           <div
-            className={`relative mx-auto overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-2xl ${
-              state.frameRatio === '9:16' ? 'aspect-[9/16] max-h-[75vh]' : 'aspect-[16/9] w-full'
-            }`}
-            style={{ aspectRatio: state.frameRatio === '9:16' ? '9 / 16' : '16 / 9' }}
+            ref={previewRef}
+            className="preview-checker relative mx-auto overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-2xl"
+            style={{
+              aspectRatio: portrait ? '9 / 16' : '16 / 9',
+              width: portrait ? 'min(100%, calc(72vh * 9 / 16))' : '100%',
+            }}
           >
-            <div
-              className={`grid h-full w-full gap-1.5 p-1.5 ${gridClass(state.grid, state.frameRatio)}`}
-            >
-              {state.slots.map((slot, i) => (
+            {slots.map((slot, i) => {
+              const cell = layout.cells[i];
+              if (!cell) return null;
+              return (
                 <div
                   key={slot.id}
-                  className={slotClass(state.grid, state.frameRatio, i)}
+                  className="absolute"
+                  style={{
+                    left: `${(cell.x / layout.w) * 100}%`,
+                    top: `${(cell.y / layout.h) * 100}%`,
+                    width: `${(cell.w / layout.w) * 100}%`,
+                    height: `${(cell.h / layout.h) * 100}%`,
+                  }}
                 >
                   <PhotoSlotView
                     slot={slot}
                     index={i}
+                    total={state.grid}
+                    cell={cell}
+                    scale={scale}
                     active={activeSlot === i}
                     onActivate={() => setActiveSlot(i)}
-                    onPhotoChange={(src) => onPhotoChange(i, src)}
                     onAdjust={(patch) => updateSlot(i, patch)}
-                    onDragStart={onDragStart}
-                    onDragOver={onDragOver}
-                    onDrop={onDrop}
-                    onCapture={startCapture}
-                    isDragging={dragIndex === i}
+                    onCapture={() => setCaptureTarget(i)}
+                    onUpload={(file) => uploadPhoto(i, file)}
+                    onRemove={() => setPhoto(i, null)}
+                    onMove={(dir) => moveSlot(i, dir)}
                   />
                 </div>
-              ))}
-            </div>
+              );
+            })}
 
-            {/* Frame overlay preview */}
             {state.frameSrc && (
               <img
                 src={state.frameSrc}
-                alt="frame"
-                className="pointer-events-none absolute inset-0 h-full w-full object-fill"
+                alt=""
+                aria-hidden
+                className="pointer-events-none absolute inset-0 h-full w-full"
               />
             )}
           </div>
 
-          {/* Active slot controls */}
-          {activePhoto && activePhoto.src && (
-            <div className="mt-4 rounded-xl border border-white/10 bg-ink-900/60 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-semibold">Atur Foto {activeSlot + 1}</span>
-                <span className="text-xs text-ink-600">drag foto untuk geser posisi</span>
-              </div>
-              <label className="mb-1 flex items-center justify-between text-xs text-ink-600">
-                <span>Besar / Kecil</span>
-                <span className="font-mono">{activePhoto.zoom.toFixed(2)}x</span>
-              </label>
-              <input
-                type="range"
-                min={1}
-                max={3}
-                step={0.01}
-                value={activePhoto.zoom}
-                onChange={(e) => updateSlot(activeSlot, { zoom: parseFloat(e.target.value) })}
-                className="w-full accent-[#FF7E1D]"
-              />
-            </div>
-          )}
+          {/* Adjust active photo */}
+          <div className="mt-4 rounded-xl border border-white/10 bg-ink-900/60 p-4">
+            {activePhoto?.src ? (
+              <>
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold">Atur Foto {activeSlot + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => updateSlot(activeSlot, { zoom: 1, ox: 0, oy: 0 })}
+                    className="flex items-center gap-1 text-xs text-ink-600 hover:text-cream"
+                  >
+                    <ResetIcon size={13} /> Reset posisi
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    aria-label="Perkecil"
+                    onClick={() =>
+                      updateSlot(activeSlot, { zoom: clamp(activePhoto.zoom - 0.1, MIN_ZOOM, MAX_ZOOM) })
+                    }
+                    className="rounded-lg p-1.5 text-ink-600 hover:bg-white/5 hover:text-cream"
+                  >
+                    <ZoomOutIcon size={18} />
+                  </button>
+                  <input
+                    type="range"
+                    aria-label="Zoom"
+                    min={MIN_ZOOM}
+                    max={MAX_ZOOM}
+                    step={0.01}
+                    value={activePhoto.zoom}
+                    onChange={(e) => updateSlot(activeSlot, { zoom: parseFloat(e.target.value) })}
+                    className="w-full accent-[#FF7E1D]"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Perbesar"
+                    onClick={() =>
+                      updateSlot(activeSlot, { zoom: clamp(activePhoto.zoom + 0.1, MIN_ZOOM, MAX_ZOOM) })
+                    }
+                    className="rounded-lg p-1.5 text-ink-600 hover:bg-white/5 hover:text-cream"
+                  >
+                    <ZoomInIcon size={18} />
+                  </button>
+                  <span className="w-12 text-right font-mono text-xs text-ink-600">
+                    {activePhoto.zoom.toFixed(2)}×
+                  </span>
+                </div>
+                <p className="mt-2 text-[11px] text-ink-600">
+                  Seret foto untuk menggeser · scroll untuk zoom · panah ⇐ ⇒ di foto untuk menukar urutan ·
+                  keyboard: +/− zoom, panah geser, Delete hapus
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-ink-600">
+                Klik <span className="text-cream">Kamera</span> atau <span className="text-cream">Upload</span> pada
+                kotak untuk mengisi foto. Kamu juga bisa seret file gambar langsung ke kotak.
+              </p>
+            )}
+          </div>
         </section>
 
-        {/* Sidebar controls */}
-        <aside className="space-y-5">
-          {/* Grid count */}
-          <Panel title="Jumlah Kotak">
+        {/* Controls */}
+        <aside className="space-y-4">
+          <Panel step={1} title="Layout">
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {(
+                [
+                  ['16:9', 'Landscape', LandscapeIcon],
+                  ['9:16', 'Portrait', PortraitIcon],
+                ] as const
+              ).map(([ratio, label, Icon]) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  onClick={() => setRatio(ratio)}
+                  disabled={customFrame}
+                  aria-pressed={state.frameRatio === ratio}
+                  title={customFrame ? 'Rasio mengikuti frame custom' : label}
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    state.frameRatio === ratio
+                      ? 'border-brand bg-brand/10 text-brand'
+                      : 'border-white/10 text-ink-600 hover:border-white/20 hover:text-cream'
+                  }`}
+                >
+                  <Icon size={18} /> {label}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {([1, 2, 3] as GridCount[]).map((n) => (
                 <button
                   key={n}
+                  type="button"
                   onClick={() => setGrid(n)}
+                  aria-pressed={state.grid === n}
                   className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 transition ${
                     state.grid === n
                       ? 'border-brand bg-brand/10 text-brand'
@@ -307,244 +505,215 @@ export default function Home() {
                 </button>
               ))}
             </div>
-          </Panel>
-
-          {/* Frame */}
-          <Panel title="Frame Custom (PNG)">
-            <p className="mb-3 text-xs text-ink-600">
-              Upload PNG transparan 16:9 atau 9:16. Rasio terdeteksi otomatis.
-            </p>
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 p-5 text-center transition hover:border-brand hover:bg-brand/5">
-              <UploadIcon size={22} className="text-brand" />
-              <span className="text-sm font-medium">Pilih Frame PNG</span>
-              <span className="text-[11px] text-ink-600">16:9 / 9:16 · transparan</span>
-              <input type="file" accept="image/png" className="hidden" onChange={handleFrameUpload} />
-            </label>
-            {state.frameSrc && (
-              <div className="mt-3 flex items-center justify-between rounded-lg bg-white/5 p-2">
-                <div className="flex items-center gap-2">
-                  <img src={state.frameSrc} alt="frame thumb" className="h-8 w-14 rounded object-cover" />
-                  <span className="text-xs font-medium">{state.frameRatio}</span>
-                </div>
-                <button onClick={clearFrame} className="rounded p-1 text-ink-600 hover:text-red-400">
-                  <XIcon size={16} />
-                </button>
-              </div>
+            {customFrame && (
+              <p className="mt-2 text-[11px] text-ink-600">
+                Rasio dikunci ke {state.frameRatio} oleh frame custom. Hapus frame untuk mengubah.
+              </p>
             )}
           </Panel>
 
-          {/* Add photos */}
-          <Panel title="Tambah Foto">
+          <Panel step={2} title="Frame">
+            <div className="grid grid-cols-4 gap-2">
+              <FrameChoice
+                selected={!state.frameSrc}
+                onClick={() => chooseFrame(null)}
+                label="Tanpa"
+                ratio={state.frameRatio}
+              >
+                <div className="flex h-full w-full items-center justify-center text-ink-600">
+                  <XIcon size={16} />
+                </div>
+              </FrameChoice>
+              {framesForRatio(state.frameRatio).map((f) => (
+                <FrameChoice
+                  key={f.id}
+                  selected={state.frameSrc === f.src}
+                  onClick={() => chooseFrame(f.src)}
+                  label={f.name}
+                  ratio={f.ratio}
+                >
+                  <img src={f.src} alt="" className="h-full w-full" />
+                </FrameChoice>
+              ))}
+            </div>
+
+            <div className="mt-3">
+              {customFrame ? (
+                <div className="flex items-center justify-between rounded-lg border border-brand/40 bg-brand/5 p-2">
+                  <div className="flex items-center gap-2">
+                    <img
+                      src={state.frameSrc!}
+                      alt="frame custom"
+                      className="h-8 w-12 rounded bg-ink-800 object-contain"
+                    />
+                    <div>
+                      <p className="text-xs font-medium">Frame custom</p>
+                      <p className="text-[11px] text-ink-600">{state.frameRatio}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => chooseFrame(null)}
+                    aria-label="Hapus frame custom"
+                    className="rounded p-1 text-ink-600 hover:text-red-400"
+                  >
+                    <XIcon size={16} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => frameInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-ink-600 transition hover:border-brand hover:text-cream"
+                >
+                  <UploadIcon size={15} /> Upload frame PNG transparan (16:9 / 9:16)
+                </button>
+              )}
+              <input
+                ref={frameInputRef}
+                type="file"
+                accept="image/png"
+                className="hidden"
+                onChange={handleFrameUpload}
+              />
+            </div>
+          </Panel>
+
+          <Panel step={3} title="Foto">
+            <div className="mb-3 flex gap-1.5">
+              {slots.map((s, i) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setActiveSlot(i)}
+                  aria-label={`Pilih foto ${i + 1}`}
+                  className={`h-1.5 flex-1 rounded-full transition ${
+                    s.src ? 'bg-emerald-400' : 'bg-white/10'
+                  } ${activeSlot === i ? 'ring-2 ring-brand ring-offset-2 ring-offset-ink-900' : ''}`}
+                />
+              ))}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => {
-                  const firstEmpty = state.slots.findIndex((s) => !s.src);
-                  startCapture(firstEmpty >= 0 ? firstEmpty : activeSlot);
-                }}
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-white/10 py-2.5 text-sm font-medium hover:bg-white/20"
+                type="button"
+                onClick={() => setCaptureTarget(firstEmptyOrActive())}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-brand py-2.5 text-sm font-semibold text-ink-950 hover:bg-brand-bright"
               >
                 <CameraIcon size={16} /> Kamera
               </button>
               <button
-                onClick={() => {
-                  const firstEmpty = state.slots.findIndex((s) => !s.src);
-                  const idx = firstEmpty >= 0 ? firstEmpty : activeSlot;
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = 'image/*';
-                  input.onchange = (ev) => {
-                    const f = (ev.target as HTMLInputElement).files?.[0];
-                    if (!f) return;
-                    const r = new FileReader();
-                    r.onload = () => onPhotoChange(idx, r.result as string);
-                    r.readAsDataURL(f);
-                  };
-                  input.click();
-                }}
+                type="button"
+                onClick={() => pickFile(firstEmptyOrActive())}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-white/10 py-2.5 text-sm font-medium hover:bg-white/20"
               >
                 <UploadIcon size={16} /> Upload
               </button>
             </div>
+            <p className="mt-2 text-[11px] text-ink-600">
+              {filled < state.grid
+                ? `Mengisi kotak ${firstEmptyOrActive() + 1}. Foto otomatis dikecilkan agar ringan.`
+                : `Semua kotak terisi — tombol di atas mengganti foto ${activeSlot + 1}.`}
+            </p>
           </Panel>
 
-          {/* Share */}
-          <Panel title="Bagikan Desain">
-            <button
-              onClick={handleShare}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-accent py-2.5 text-sm font-semibold hover:bg-accent-soft"
-            >
-              <ShareIcon size={16} /> Buat Link Share
-            </button>
-            {shareUrl && (
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center gap-2 rounded-lg bg-black/40 p-2">
-                  <input
-                    readOnly
-                    value={shareUrl}
-                    className="min-w-0 flex-1 truncate bg-transparent text-xs text-ink-600"
-                  />
-                  <button
-                    onClick={copyShare}
-                    className="shrink-0 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-ink-950 hover:bg-brand-bright"
-                  >
-                    {copied ? '✓ Tersalin' : 'Copy'}
-                  </button>
-                </div>
-                <p className="text-[11px] text-ink-600">
-                  Link berisi desain lengkap (foto + frame). Buka di browser lain untuk melihat hasil yang sama.
-                </p>
-              </div>
-            )}
+          <Panel step={4} title="Simpan">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={busy !== null || filled === 0}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-brand py-2.5 text-sm font-semibold text-ink-950 hover:bg-brand-bright disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <DownloadIcon size={16} /> {busy === 'download' ? 'Menyiapkan…' : 'PNG'}
+              </button>
+              <button
+                type="button"
+                onClick={openShare}
+                disabled={filled === 0}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 py-2.5 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ShareIcon size={16} /> Bagikan
+              </button>
+            </div>
+            <p className="mt-2 flex items-start gap-1.5 text-[11px] text-ink-600">
+              <ImageIcon size={13} className="mt-0.5 shrink-0" />
+              Hasil {layout.w}×{layout.h}px, persis seperti preview. Draft tersimpan otomatis di browser ini.
+            </p>
           </Panel>
         </aside>
       </div>
 
-      {/* Notice toast */}
-      {notice && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-ink-950 shadow-xl">
-          {notice}
-        </div>
+      <Toast toast={toast} />
+
+      {captureTarget !== null && (
+        <CameraModal
+          slotIndex={captureTarget}
+          onClose={() => setCaptureTarget(null)}
+          onCapture={(dataUrl) => {
+            setPhoto(captureTarget, dataUrl);
+            setCaptureTarget(null);
+          }}
+        />
       )}
 
-      {/* Camera modal */}
-      {showCamera && (
-        <CameraModal
-          onClose={() => {
-            setShowCamera(false);
-            setCaptureTarget(null);
-          }}
-          onCapture={(dataUrl) => {
-            if (captureTarget !== null) onPhotoChange(captureTarget, dataUrl);
-            setShowCamera(false);
-            setCaptureTarget(null);
-          }}
+      {shareOpen && (
+        <ShareModal
+          link={shareLink}
+          loading={shareLoading}
+          canShareImage={canShareFiles}
+          onShareImage={handleShareImage}
+          onDownload={handleDownload}
+          onClose={() => setShareOpen(false)}
+          onCopied={(ok) => show(ok ? 'Link tersalin' : 'Gagal menyalin, salin manual', ok ? 'success' : 'error')}
         />
       )}
     </main>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ step, title, children }: { step: number; title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-ink-900/60 p-4">
-      <h3 className="mb-3 text-sm font-semibold text-cream">{title}</h3>
+    <section className="rounded-xl border border-white/10 bg-ink-900/60 p-4">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-cream">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/10 text-[11px] text-ink-600">
+          {step}
+        </span>
+        {title}
+      </h3>
       {children}
-    </div>
+    </section>
   );
 }
 
-function CameraModal({
-  onClose,
-  onCapture,
+function FrameChoice({
+  selected,
+  onClick,
+  label,
+  ratio,
+  children,
 }: {
-  onClose: () => void;
-  onCapture: (dataUrl: string) => void;
+  selected: boolean;
+  onClick: () => void;
+  label: string;
+  ratio: FrameRatio;
+  children: React.ReactNode;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [mirror, setMirror] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function start() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setReady(true);
-        }
-      } catch (e) {
-        setError('Tidak bisa akses kamera. Pastikan izin diberikan & HTTPS aktif.');
-      }
-    }
-    start();
-    return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-
-  const capture = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d')!;
-    if (mirror) {
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-    }
-    ctx.drawImage(video, 0, 0);
-    onCapture(canvas.toDataURL('image/jpeg', 0.9));
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h3 className="text-sm font-semibold">Ambil Foto</h3>
-          <button onClick={onClose} className="rounded p-1 text-ink-600 hover:text-cream">
-            <XIcon size={18} />
-          </button>
-        </div>
-        <div className="relative bg-black">
-          {error ? (
-            <div className="flex aspect-[16/9] items-center justify-center p-6 text-center text-sm text-ink-600">
-              {error}
-            </div>
-          ) : (
-            <>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="aspect-[16/9] w-full object-cover"
-                style={{ transform: mirror ? 'scaleX(-1)' : 'none' }}
-              />
-              {!ready && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-600">
-                  Menyalakan kamera…
-                </div>
-              )}
-            </>
-          )}
-        </div>
-        <div className="flex items-center justify-between gap-3 p-4">
-          <button
-            onClick={() => setMirror((m) => !m)}
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium hover:bg-white/5"
-          >
-            <FlipIcon size={15} /> Mirror
-          </button>
-          <button
-            onClick={capture}
-            disabled={!ready}
-            className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-brand text-ink-950 shadow-lg hover:bg-brand-bright disabled:opacity-40"
-          >
-            <CameraIcon size={24} />
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-lg px-3 py-2 text-xs font-medium text-ink-600 hover:text-cream"
-          >
-            Batal
-          </button>
-        </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`flex flex-col items-center gap-1 rounded-lg border p-1.5 transition ${
+        selected ? 'border-brand bg-brand/10' : 'border-white/10 hover:border-white/25'
+      }`}
+    >
+      <div
+        className="preview-checker w-full overflow-hidden rounded bg-ink-800"
+        style={{ aspectRatio: ratio === '9:16' ? '9 / 16' : '16 / 9', maxHeight: 56 }}
+      >
+        {children}
       </div>
-    </div>
+      <span className={`text-[10px] font-medium ${selected ? 'text-brand' : 'text-ink-600'}`}>{label}</span>
+    </button>
   );
 }

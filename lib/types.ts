@@ -8,15 +8,32 @@ export interface PhotoSlot {
   src: string | null;
   /** zoom scale (1 = fit cover) */
   zoom: number;
-  /** offset within the slot, normalized -1..1 */
+  /** offset within the slot as a fraction of the overflow, -1..1 */
   ox: number;
   oy: number;
 }
 
 export interface BoothState {
   grid: GridCount;
-  /** frame overlay as dataURL (PNG with transparency) or null */
+  /**
+   * Frame overlay: either a built-in frame path (`/frames/...`) or an
+   * uploaded PNG dataURL. null = no frame.
+   */
   frameSrc: string | null;
   frameRatio: FrameRatio;
   slots: PhotoSlot[];
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Inset {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
 }
