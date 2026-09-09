@@ -1,6 +1,6 @@
-export type GridCount = 1 | 2 | 3;
+export type GridCount = 1 | 2 | 3 | 4;
 
-export type FrameRatio = '16:9' | '9:16';
+export type FrameRatio = '16:9' | '9:16' | '1:3';
 
 export interface PhotoSlot {
   id: string;
@@ -21,6 +21,11 @@ export interface BoothState {
    */
   frameSrc: string | null;
   frameRatio: FrameRatio;
+  /** Missing in legacy payloads, whose portrait-three layout must not change. */
+  layoutVersion?: 1 | 2;
+  /** Native-pixel geometry captured when importing a custom PNG template. */
+  frameInset?: Inset;
+  frameGrid?: GridCount;
   slots: PhotoSlot[];
 }
 

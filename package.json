@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.tests.json && node --test tests/*.cjs .hoplite/test-build/components/camera/*.test.js"
   },
   "dependencies": {
     "lz-string": "1.5.0",

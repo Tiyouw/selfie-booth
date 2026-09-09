@@ -29,9 +29,6 @@ export interface ShareProvider {
 const SHARE_PHOTO_DIM = 720;
 const SHARE_PHOTO_QUALITY = 0.72;
 
-/** Frame PNG dataURLs don't recompress well; above this they're dropped from the link. */
-const MAX_CUSTOM_FRAME_BYTES = 400_000;
-
 export const HASH_PREFIX = 'd=';
 
 function classify(length: number): ShareLink['size'] {
@@ -47,9 +44,7 @@ export async function shareableState(state: BoothState): Promise<BoothState> {
       src: s.src ? await compressDataURL(s.src, SHARE_PHOTO_DIM, SHARE_PHOTO_QUALITY) : null,
     })),
   );
-  const customFrameTooBig =
-    state.frameSrc?.startsWith('data:') && state.frameSrc.length > MAX_CUSTOM_FRAME_BYTES;
-  return { ...state, slots, frameSrc: customFrameTooBig ? null : state.frameSrc };
+  return { ...state, slots };
 }
 
 export const hashShareProvider: ShareProvider = {

@@ -6,34 +6,24 @@ import { MAX_ZOOM, MIN_ZOOM, clamp, placePhoto } from '../lib/layout';
 import { cellRadius } from '../lib/render';
 import { ArrowLeftIcon, ArrowRightIcon, CameraIcon, TrashIcon, UploadIcon } from './icons';
 
-// natural sizes are cached so re-renders never flash the placeholder
-const dimsCache = new Map<string, { w: number; h: number }>();
-
 function useNaturalSize(src: string | null) {
-  const [dims, setDims] = useState(() => (src ? dimsCache.get(src) ?? null : null));
+  const [loaded, setLoaded] = useState<{ src: string; w: number; h: number } | null>(null);
   useEffect(() => {
     if (!src) {
-      setDims(null);
-      return;
-    }
-    const cached = dimsCache.get(src);
-    if (cached) {
-      setDims(cached);
+      setLoaded(null);
       return;
     }
     let alive = true;
     const img = new Image();
     img.onload = () => {
-      const d = { w: img.naturalWidth, h: img.naturalHeight };
-      dimsCache.set(src, d);
-      if (alive) setDims(d);
+      if (alive) setLoaded({ src, w: img.naturalWidth, h: img.naturalHeight });
     };
     img.src = src;
     return () => {
       alive = false;
     };
   }, [src]);
-  return dims;
+  return loaded?.src === src ? loaded : null;
 }
 
 interface PhotoSlotViewProps {

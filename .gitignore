@@ -6,5 +6,10 @@ out
 .env*
 .vercel
 .vercel_token
+.next-build
+.hoplite/artifacts/
+.hoplite/attachments/
+.hoplite/archive/
+.hoplite/test-build/
 
 *.tsbuildinfo

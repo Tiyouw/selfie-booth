@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="1920" viewBox="0 0 640 1920">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8E3A"/><stop offset="0.5" stop-color="#FF6D00"/><stop offset="1" stop-color="#1C64F2"/></linearGradient></defs>
+<path fill="#0d0d0d" fill-rule="evenodd" d="M0 0H640V1920H0Z M38 180H602A14 14 0 0 1 616 194V1726A14 14 0 0 1 602 1740H38A14 14 0 0 1 24 1726V194A14 14 0 0 1 38 180Z"/>
+<rect x="19" y="175" width="602" height="1570" rx="20" fill="none" stroke="url(#g)" stroke-width="4"/>
+<path d="M224 1862.0H416" stroke="url(#g)" stroke-width="3"/>
+<text x="320" y="100.0" text-anchor="middle" font-family="Poppins, Helvetica, Arial, sans-serif" font-weight="700" font-size="34" fill="#faf9f6" letter-spacing="3">SELFIE BOOTH</text>
+<text x="320" y="1837.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#faf9f6" letter-spacing="4">GOOD TIMES</text>
+</svg>

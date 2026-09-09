@@ -55,6 +55,15 @@ body {
 }
 .countdown-pop { animation: countdown-pop 1s ease-out; }
 
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid #ff8e3a;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown-pop, .toast-in { animation: none; }
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #101010; }
 ::-webkit-scrollbar-thumb { background: #292929; border-radius: 8px; }
