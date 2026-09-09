@@ -4,8 +4,8 @@ import type { FrameRatio, Inset } from './types';
  * Built-in frame registry.
  *
  * To add a frame: drop a transparent PNG/SVG into `public/frames/` sized
- * 1920×1080 (16:9) or 1080×1920 (9:16), then add an entry below. `name` groups
- * the 16:9 and 9:16 variants of one design so switching ratio keeps the look.
+ * 1920×1080 (16:9), 1080×1920 (9:16), or 640×1920 (1:3), then add an entry
+ * below. `name` groups ratio variants so switching ratio keeps the look.
  * `inset` is the transparent window (in export pixels) the photos are laid
  * out inside, so thick frame borders never cover the photos.
  */
@@ -35,6 +35,13 @@ export const BUILTIN_FRAMES: BuiltinFrame[] = [
     inset: thin(40),
   },
   {
+    id: 'klasik-1x3',
+    name: 'Klasik',
+    ratio: '1:3',
+    src: '/frames/klasik-1x3.svg',
+    inset: { top: 180, right: 24, bottom: 180, left: 24 },
+  },
+  {
     id: 'polaroid-16x9',
     name: 'Polaroid',
     ratio: '16:9',
@@ -49,6 +56,13 @@ export const BUILTIN_FRAMES: BuiltinFrame[] = [
     inset: { top: 48, right: 48, bottom: 210, left: 48 },
   },
   {
+    id: 'polaroid-1x3',
+    name: 'Polaroid',
+    ratio: '1:3',
+    src: '/frames/polaroid-1x3.svg',
+    inset: { top: 144, right: 28, bottom: 240, left: 28 },
+  },
+  {
     id: 'neon-16x9',
     name: 'Neon',
     ratio: '16:9',
@@ -61,6 +75,13 @@ export const BUILTIN_FRAMES: BuiltinFrame[] = [
     ratio: '9:16',
     src: '/frames/neon-9x16.svg',
     inset: thin(56),
+  },
+  {
+    id: 'neon-1x3',
+    name: 'Neon',
+    ratio: '1:3',
+    src: '/frames/neon-1x3.svg',
+    inset: { top: 176, right: 32, bottom: 176, left: 32 },
   },
 ];
 

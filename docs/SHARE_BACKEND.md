@@ -13,7 +13,7 @@ mengembalikan id pendek. Kode sudah disiapkan lewat abstraksi `ShareProvider` di
 
 ```
 POST /v1/designs
-  body: { v: 2, g, f, r, s: [[src, zoom, ox, oy], ...] }   ← sama dengan payload encodeState
+  body: { v: 3, g, f, r, l, i?, k?, s: [[src, zoom, ox, oy], ...] }
   resp: { id: "k7Qx2a", url: "https://selfie.tiyoouw.app/s/k7Qx2a", expiresAt }
 
 GET  /v1/designs/:id
@@ -22,9 +22,17 @@ GET  /v1/designs/:id
 GET  /v1/designs/:id/image.png     ← opsional, render server-side untuk OG image
 ```
 
+Gunakan payload sebelum kompresi `encodeState`: `g` jumlah foto, `r` rasio
+(`16:9`, `9:16`, `1:3`), `l` versi layout, `i` inset custom dalam urutan
+atas/kanan/bawah/kiri, dan `k` jumlah jendela frame custom. `s` hanya berisi
+slot terlihat (maksimal empat); jangan mengirim foto tersembunyi dari draft.
+Validasi dengan aturan `sanitizeState` dan pertahankan kompatibilitas v1/v2.
+
 - id: 6–8 karakter base62 acak (bukan auto-increment, supaya tidak bisa ditebak).
 - TTL: default 30 hari, hapus via cron.
-- Batas ukuran body: 3 MB (3 foto 1280px + frame PNG).
+- Batas ukuran body perlu dihitung untuk maksimal empat foto dan frame PNG custom
+  (upload saat ini maksimal 10 MB, sebelum re-encode/base64). Tolak payload terlalu
+  besar dengan pesan jelas; jangan menghapus frame/foto diam-diam.
 - Rate limit per IP (mis. 20 POST/jam) + CORS hanya dari domain Vercel.
 - Simpan foto sebagai file (bukan dalam DB) — SQLite untuk metadata sudah cukup.
 
