@@ -39,11 +39,15 @@ export function hasPhotos(state: BoothState): boolean {
 
 /** Serialize state into a compact URL-safe string. Hidden slots are dropped. */
 export function encodeState(state: BoothState): string {
-  return encodePayload(state, visibleSlots(state));
+  return compressToEncodedURIComponent(JSON.stringify(buildPayload(state, visibleSlots(state))));
 }
 
-function encodePayload(state: BoothState, slots: PhotoSlot[]): string {
-  const payload = {
+/**
+ * Share/API payload object for the given slots (pre-compression).
+ * Used by the hash provider and by the remote share API (docs/SHARE_BACKEND.md).
+ */
+export function buildPayload(state: BoothState, slots: PhotoSlot[]): Record<string, unknown> {
+  return {
     v: 3,
     g: state.grid,
     f: state.frameSrc,
@@ -53,7 +57,10 @@ function encodePayload(state: BoothState, slots: PhotoSlot[]): string {
     k: state.frameGrid,
     s: slots.map((s) => [s.src, round(s.zoom), round(s.ox), round(s.oy)]),
   };
-  return compressToEncodedURIComponent(JSON.stringify(payload));
+}
+
+function encodePayload(state: BoothState, slots: PhotoSlot[]): string {
+  return compressToEncodedURIComponent(JSON.stringify(buildPayload(state, slots)));
 }
 
 function round(n: number): number {

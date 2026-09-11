@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import type { ShareLink } from '../lib/share';
+import { SHARE_API } from '../lib/share';
 import { CheckIcon, DownloadIcon, LinkIcon, ShareIcon, XIcon } from './icons';
 
 interface ShareModalProps {
@@ -10,9 +12,17 @@ interface ShareModalProps {
   canShareImage: boolean;
   onShareImage: () => void;
   onDownload: () => void;
+  onDownloadGif: () => void;
+  onShareGif: () => void;
+  gifBusy: boolean;
+  gifEnabled: boolean;
   onClose: () => void;
   onCopied: (ok: boolean) => void;
+  onDeleted: (ok: boolean) => void;
 }
+
+const secondaryButton =
+  'flex items-center justify-center gap-2 rounded-xl border border-white/15 py-2.5 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40';
 
 export default function ShareModal({
   link,
@@ -20,16 +30,39 @@ export default function ShareModal({
   canShareImage,
   onShareImage,
   onDownload,
+  onDownloadGif,
+  onShareGif,
+  gifBusy,
+  gifEnabled,
   onClose,
   onCopied,
+  onDeleted,
 }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // QR only for short (remote) links — a 400 KB hash link cannot be encoded.
+  useEffect(() => {
+    let active = true;
+    if (!link || link.length > 1200) {
+      setQr(null);
+      return;
+    }
+    QRCode.toDataURL(link.url, { margin: 1, width: 160 })
+      .then((url) => active && setQr(url))
+      .catch(() => active && setQr(null));
+    return () => {
+      active = false;
+    };
+  }, [link]);
 
   const copy = async () => {
     if (!link) return;
@@ -40,6 +73,23 @@ export default function ShareModal({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       onCopied(false);
+    }
+  };
+
+  const removeRemote = async () => {
+    if (!link?.id || !link.deleteToken || !SHARE_API || deleting) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${SHARE_API.replace(/\/$/, '')}/v1/designs/${link.id}`, {
+        method: 'DELETE',
+        headers: { 'X-Delete-Token': link.deleteToken },
+      });
+      if (res.ok) setDeleted(true);
+      onDeleted(res.ok);
+    } catch {
+      onDeleted(false);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -65,7 +115,7 @@ export default function ShareModal({
           <section>
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-600">Hasil gambar</h4>
             <p className="mb-3 text-xs text-ink-600">
-              Cara paling aman: kirim file PNG hasil jadi. Bisa dibuka di mana saja.
+              Cara paling aman: kirim file hasil jadi. Bisa dibuka di mana saja.
             </p>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -80,9 +130,27 @@ export default function ShareModal({
                 onClick={onShareImage}
                 disabled={!canShareImage}
                 title={canShareImage ? 'Bagikan lewat aplikasi' : 'Browser ini tidak mendukung share file'}
-                className="flex items-center justify-center gap-2 rounded-xl border border-white/15 py-2.5 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                className={secondaryButton}
               >
                 <ShareIcon size={16} /> Bagikan gambar
+              </button>
+              <button
+                type="button"
+                onClick={onDownloadGif}
+                disabled={!gifEnabled || gifBusy}
+                title={gifEnabled ? 'Foto muncul satu per satu, lalu strip lengkap' : 'Isi minimal satu foto dulu'}
+                className={secondaryButton}
+              >
+                <DownloadIcon size={16} /> {gifBusy ? 'Membuat GIF…' : 'Download GIF'}
+              </button>
+              <button
+                type="button"
+                onClick={onShareGif}
+                disabled={!gifEnabled || gifBusy || !canShareImage}
+                title={gifEnabled && canShareImage ? 'Bagikan GIF lewat aplikasi' : 'Isi foto dulu / browser tidak mendukung share file'}
+                className={secondaryButton}
+              >
+                <ShareIcon size={16} /> Bagikan GIF
               </button>
             </div>
           </section>
@@ -90,9 +158,15 @@ export default function ShareModal({
           <section>
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-600">Link desain</h4>
             <p className="mb-3 text-xs text-ink-600">
-              Link berisi foto & frame yang bisa dibuka dan diedit lagi di browser lain.
+              {link?.provider === 'remote'
+                ? 'Link pendek: bisa dibuka dan diedit lagi di browser lain.'
+                : 'Link berisi foto & frame yang bisa dibuka dan diedit lagi di browser lain.'}
             </p>
-            {loading || !link ? (
+            {deleted ? (
+              <p className="rounded-lg bg-black/40 p-2 text-xs text-ink-600">
+                Link telah dihapus dari server. Bagikan file PNG/GIF sebagai gantinya.
+              </p>
+            ) : loading || !link ? (
               <div className="h-10 animate-pulse rounded-lg bg-white/5" />
             ) : (
               <>
@@ -134,6 +208,36 @@ export default function ShareModal({
                   {link.size === 'huge' &&
                     `Link terlalu panjang (${sizeKb} KB) dan kemungkinan gagal dibuka. Bagikan file PNG saja.`}
                 </p>
+                {qr && (
+                  <div className="mt-3 flex items-center gap-3 rounded-lg bg-black/40 p-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- data URL dari library QR */}
+                    <img src={qr} alt="QR code link share" className="h-20 w-20 rounded bg-cream" />
+                    <p className="text-[11px] leading-relaxed text-ink-600">
+                      Scan untuk membuka hasil ini di HP lain.
+                    </p>
+                  </div>
+                )}
+                {link.provider === 'remote' && link.expiresAt !== undefined && (
+                  <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-white/10 p-2.5">
+                    <p className="text-[11px] leading-relaxed text-ink-600">
+                      Link aktif hingga{' '}
+                      {new Date(link.expiresAt * 1000).toLocaleDateString('id-ID', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                      . Siapa pun yang punya link bisa melihatnya.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={removeRemote}
+                      disabled={deleting}
+                      className="shrink-0 rounded-lg bg-red-500/15 px-2.5 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/25 disabled:opacity-40"
+                    >
+                      {deleting ? 'Menghapus…' : 'Hapus dari server'}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </section>

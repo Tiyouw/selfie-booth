@@ -10,7 +10,7 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, r: Rect, radius: number) {
+export function roundRectPath(ctx: CanvasRenderingContext2D, r: Rect, radius: number) {
   const { x, y, w, h } = r;
   ctx.moveTo(x + radius, y);
   ctx.arcTo(x + w, y, x + w, y + h, radius);
@@ -24,13 +24,28 @@ export function cellRadius(cell: Rect): number {
   return Math.min(12, cell.w * 0.06, cell.h * 0.06);
 }
 
-function drawPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cell: Rect, slot: PhotoSlot) {
+export function drawPhoto(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cell: Rect,
+  slot: PhotoSlot,
+  radius = cellRadius(cell),
+) {
   ctx.save();
   ctx.beginPath();
-  roundRect(ctx, cell, cellRadius(cell));
+  roundRectPath(ctx, cell, radius);
   ctx.clip();
   const p = placePhoto(img.naturalWidth, img.naturalHeight, cell, slot);
   ctx.drawImage(img, p.x, p.y, p.w, p.h);
+  ctx.restore();
+}
+
+export function drawEmptyCell(ctx: CanvasRenderingContext2D, cell: Rect, radius = cellRadius(cell)) {
+  ctx.save();
+  ctx.fillStyle = '#161616';
+  ctx.beginPath();
+  roundRectPath(ctx, cell, radius);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -51,12 +66,7 @@ export async function renderBoothCanvas(state: BoothState): Promise<HTMLCanvasEl
     const cell = cells[i];
     if (!cell) continue;
     if (!slot?.src) {
-      ctx.save();
-      ctx.fillStyle = '#161616';
-      ctx.beginPath();
-      roundRect(ctx, cell, cellRadius(cell));
-      ctx.fill();
-      ctx.restore();
+      drawEmptyCell(ctx, cell);
       continue;
     }
     const img = await loadImage(slot.src);
