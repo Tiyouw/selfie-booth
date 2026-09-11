@@ -14,7 +14,7 @@ selfie-booth/
 ├── lib/            # types, layout, state, share, render, image, frames, template
 ├── public/frames/  # frame built-in (SVG)
 ├── scripts/        # gen-frames.py (regenerate frame default)
-├── docs/           # TEMPLATES.md, SHARE_BACKEND.md (rencana backend VPS)
+├── docs/           # TEMPLATES.md; ROADMAP.md + desain per fase (GIF_STRIP, SHARE_BACKEND, BOOMERANG, EVENT_GALLERY)
 ├── tests/          # tes core; tes kamera di components/camera/
 └── package.json
 ```
