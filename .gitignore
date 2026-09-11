@@ -13,3 +13,5 @@ out
 .hoplite/test-build/
 
 *.tsbuildinfo
+server/dist/
+__pycache__/

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BoothState, FrameRatio, GridCount, PhotoSlot } from '../lib/types';
 import { clearDraft, defaultState, hasPhotos, loadDraft, saveDraft, visibleSlots } from '../lib/state';
 import { renderBoothBlob } from '../lib/render';
+import { renderBoothGifBlob } from '../lib/gif';
 import { downloadBlob, fileToFrame, fileToPhotoDataURL } from '../lib/image';
 import { boothLayout, clamp, photoInset, MAX_ZOOM, MIN_ZOOM } from '../lib/layout';
 import { downloadTemplateGuide, downloadTemplatePNG } from '../lib/template';
@@ -39,7 +40,7 @@ export default function Home() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<ShareLink | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
-  const [busy, setBusy] = useState<'download' | 'share' | null>(null);
+  const [busy, setBusy] = useState<'download' | 'share' | 'gif' | null>(null);
   const { toast, show } = useToast();
   const frameInputRef = useRef<HTMLInputElement>(null);
   const currentState = useRef(state);
@@ -240,6 +241,38 @@ export default function Home() {
       }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') show('Gagal membagikan gambar', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }, [state, show]);
+
+  const handleDownloadGif = useCallback(async () => {
+    setBusy('gif');
+    try {
+      const blob = await renderBoothGifBlob(state);
+      downloadBlob(blob, `selfie-booth-${Date.now()}.gif`);
+      show('GIF berhasil diunduh', 'success');
+    } catch (e) {
+      console.error(e);
+      show('Gagal membuat GIF. Coba lagi.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }, [state, show]);
+
+  const handleShareGif = useCallback(async () => {
+    setBusy('gif');
+    try {
+      const blob = await renderBoothGifBlob(state);
+      const file = new File([blob], 'selfie-booth.gif', { type: 'image/gif' });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Selfie Booth' });
+      } else {
+        downloadBlob(blob, file.name);
+        show('Share file tidak didukung, GIF diunduh', 'info');
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') show('Gagal membagikan GIF', 'error');
     } finally {
       setBusy(null);
     }
@@ -661,8 +694,16 @@ export default function Home() {
           canShareImage={canShareFiles}
           onShareImage={handleShareImage}
           onDownload={handleDownload}
+          onDownloadGif={handleDownloadGif}
+          onShareGif={handleShareGif}
+          gifBusy={busy === 'gif'}
+          gifEnabled={filled > 0}
           onClose={() => setShareOpen(false)}
           onCopied={(ok) => show(ok ? 'Link tersalin' : 'Gagal menyalin, salin manual', ok ? 'success' : 'error')}
+          onDeleted={(ok) => {
+            show(ok ? 'Link dihapus dari server' : 'Gagal menghapus link', ok ? 'success' : 'error');
+            if (ok) setShareLink(null);
+          }}
         />
       )}
     </main>

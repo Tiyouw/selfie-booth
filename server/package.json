@@ -1,0 +1,27 @@
+{
+  "name": "selfie-booth-api",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server/src/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/server/tests/*.test.js",
+    "expire": "node dist/server/src/expire.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@napi-rs/canvas": "^1.0.9",
+    "better-sqlite3": "^13.0.3",
+    "hono": "^4.13.7",
+    "lz-string": "^1.5.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.2",
+    "typescript": "^5.5.4"
+  }
+}

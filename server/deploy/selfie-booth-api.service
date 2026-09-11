@@ -1,0 +1,21 @@
+[Unit]
+Description=Selfie Booth share API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=selfie-booth
+WorkingDirectory=/opt/selfie-booth/server
+EnvironmentFile=/etc/selfie-booth/api.env
+ExecStart=/usr/bin/node dist/server/src/index.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/selfie-booth
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
