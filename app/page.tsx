@@ -6,6 +6,7 @@ import { clearDraft, defaultState, hasPhotos, loadDraft, saveDraft, visibleSlots
 import { renderBoothBlob } from '../lib/render';
 import { renderBoothGifBlob } from '../lib/gif';
 import { downloadBlob, fileToFrame, fileToPhotoDataURL } from '../lib/image';
+import { addFrameToLibrary, loadFrameLibrary, removeFrameFromLibrary, type SavedFrame } from '../lib/frameLibrary';
 import { boothLayout, clamp, photoInset, MAX_ZOOM, MIN_ZOOM } from '../lib/layout';
 import { downloadTemplateGuide, downloadTemplatePNG } from '../lib/template';
 import LayoutChoices from '../components/LayoutChoices';
@@ -37,6 +38,7 @@ export default function Home() {
   const [captureTargets, setCaptureTargets] = useState<number[] | null>(null);
   const [showFrame, setShowFrame] = useState(true);
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [frameLibrary, setFrameLibrary] = useState<SavedFrame[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<ShareLink | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
@@ -64,6 +66,7 @@ export default function Home() {
           if (hasPhotos(draft)) show('Draft terakhir dipulihkan', 'info');
         }
       }
+      setFrameLibrary(loadFrameLibrary());
       setHydrated(true);
     })();
     return () => {
@@ -84,6 +87,10 @@ export default function Home() {
   const filled = slots.filter((s) => s.src).length;
   const activePhoto = slots[activeSlot] as PhotoSlot | undefined;
   const customFrame = !!state.frameSrc && !isBuiltinFrame(state.frameSrc);
+  const libraryFrames = useMemo(
+    () => frameLibrary.filter((f) => f.ratio === state.frameRatio),
+    [frameLibrary, state.frameRatio],
+  );
 
   // Preview scale: measure the preview box to convert export px → screen px.
   const previewRef = useRef<HTMLDivElement>(null);
@@ -191,14 +198,63 @@ export default function Home() {
       const original = currentState.current;
       try {
         const size = boothLayout(original);
-        const { src, ratio } = await fileToFrame(file, original.frameRatio);
+        const { src, ratio, inset, windowCount } = await fileToFrame(file, original.frameRatio);
         if (currentState.current !== original) throw new Error('Desain berubah. Pilih ulang frame untuk layout terbaru.');
-        setState((s) => ({ ...s, frameSrc: src, frameRatio: ratio, frameGrid: s.grid,
-          frameInset: photoInset(original, size.w, size.h) }));
-        show(`Frame custom diterapkan (${ratio})`, 'success');
+        // The uploaded PNG's own transparent windows drive the layout —
+        // not whichever base frame happened to be selected (docs/TEMPLATES.md).
+        const detectedGrid =
+          windowCount >= 1 && windowCount <= 4 && windowCount !== original.grid && !(ratio !== '16:9' && windowCount === 4)
+            ? (windowCount as GridCount)
+            : null;
+        const grid = detectedGrid ?? original.grid;
+        setState((s) => ({
+          ...s,
+          frameSrc: src,
+          frameRatio: ratio,
+          grid,
+          frameGrid: grid,
+          layoutVersion: 2,
+          frameInset: inset ?? photoInset(original, size.w, size.h),
+        }));
+        setActiveSlot((a) => Math.min(a, grid - 1));
+        const name = file.name.replace(/\.png$/i, '').slice(0, 40) || 'Frame';
+        const { frames, saved } = addFrameToLibrary({ name, src, ratio, grid, inset });
+        setFrameLibrary(frames);
+        const detail = [
+          inset ? 'jendela foto diukur otomatis' : 'frame diterapkan',
+          detectedGrid ? `· frame ini untuk ${detectedGrid} foto` : '',
+          saved ? '· tersimpan ke koleksi' : '· koleksi penuh, hapus frame lain',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        show(detail, saved ? 'success' : 'info');
       } catch (err) {
         show((err as Error).message || 'Gagal memuat frame', 'error');
       }
+    },
+    [show],
+  );
+
+  const applySavedFrame = useCallback((frame: SavedFrame) => {
+    setState((s) => {
+      if (frame.ratio !== s.frameRatio) return s;
+      return {
+        ...s,
+        frameSrc: frame.src,
+        frameRatio: frame.ratio,
+        grid: frame.grid,
+        frameGrid: frame.grid,
+        frameInset: frame.inset ?? undefined,
+        layoutVersion: 2,
+      };
+    });
+    setActiveSlot((a) => Math.min(a, frame.grid - 1));
+  }, []);
+
+  const removeSavedFrame = useCallback(
+    (id: string) => {
+      setFrameLibrary(removeFrameFromLibrary(id));
+      show('Frame dihapus dari koleksi', 'info');
     },
     [show],
   );
@@ -551,8 +607,8 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="mt-3">
-              {customFrame ? (
+            <div className="mt-3 space-y-2">
+              {customFrame && (
                 <div className="flex items-center justify-between rounded-lg border border-brand/40 bg-brand/5 p-2">
                   <div className="flex items-center gap-2">
                     <img
@@ -574,15 +630,14 @@ export default function Home() {
                     <XIcon size={16} />
                   </button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => frameInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-ink-600 transition hover:border-brand hover:text-cream"
-                >
-                  <UploadIcon size={15} /> Upload frame PNG · {layout.w}×{layout.h}
-                </button>
               )}
+              <button
+                type="button"
+                onClick={() => frameInputRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-ink-600 transition hover:border-brand hover:text-cream"
+              >
+                <UploadIcon size={15} /> Upload frame PNG · {layout.w}×{layout.h}
+              </button>
               <input
                 ref={frameInputRef}
                 type="file"
@@ -591,6 +646,36 @@ export default function Home() {
                 className="hidden"
                 onChange={handleFrameUpload}
               />
+              {libraryFrames.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold">
+                    Koleksi kamu · {libraryFrames.length} frame · {state.frameRatio}
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {libraryFrames.map((f) => (
+                      <div key={f.id} className="group relative">
+                        <FrameChoice
+                          selected={state.frameSrc === f.src}
+                          onClick={() => applySavedFrame(f)}
+                          label={f.name}
+                          ratio={f.ratio}
+                        >
+                          <img src={f.src} alt="" className="h-full w-full object-contain" />
+                        </FrameChoice>
+                        <button
+                          type="button"
+                          onClick={() => removeSavedFrame(f.id)}
+                          aria-label={`Hapus ${f.name} dari koleksi`}
+                          title={`Hapus ${f.name} dari koleksi`}
+                          className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                        >
+                          <XIcon size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mt-3 border-t border-white/10 pt-3">
               <p className="mb-2 text-xs font-semibold">Buat frame sendiri · {state.grid} foto</p>
@@ -603,7 +688,7 @@ export default function Home() {
                   finally { setTemplateBusy(false); }
                 }} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/20 disabled:opacity-40">{templateBusy ? 'Menyiapkan…' : 'Unduh template PNG'}</button>
               </div>
-              <p className="mt-2 text-[11px] text-ink-600">Panduan berisi koordinat, ukuran jendela foto, dan area aman. Edit PNG tanpa mengubah ukuran atau jendela transparan, lalu upload pada layout dan frame dasar yang sama.</p>
+              <p className="mt-2 text-[11px] text-ink-600">Panduan berisi koordinat, ukuran jendela foto, dan area aman. Edit PNG tanpa mengubah ukuran atau jendela transparan — saat upload, jendela transparan diukur otomatis dan foto menyesuaikan posisinya. Upload sekali, frame tersimpan di koleksi dan tetap ada setelah refresh.</p>
             </div>
           </Panel>
 

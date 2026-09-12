@@ -1,6 +1,7 @@
-import type { FrameRatio } from './types';
+import type { FrameRatio, Inset } from './types';
 import { loadImage } from './render';
 import { exportSize } from './layout';
+import { detectTransparentWindows, insetFromWindows } from './frameGeom';
 
 /** Working-copy photo size: enough for a full-quality 1920×1080 export. */
 export const PHOTO_MAX_DIM = 1280;
@@ -66,9 +67,18 @@ export async function fileToPhotoDataURL(file: File): Promise<string> {
   return resizeImage(img, PHOTO_MAX_DIM, 'image/jpeg', PHOTO_QUALITY);
 }
 
-/** Frame upload → PNG dataURL (keeps transparency) + detected ratio. */
-export async function fileToFrame(file: File, expectedRatio?: FrameRatio): Promise<{ src: string; ratio: FrameRatio }> {
-  if (file.type !== 'image/png') throw new Error('Frame harus berupa PNG transparan');
+/** Frame upload → PNG dataURL (keeps transparency) + detected ratio and geometry. */
+export interface PreparedFrame {
+  src: string;
+  ratio: FrameRatio;
+  /** Window geometry measured from the PNG's transparent pixels, if sizable windows exist. */
+  inset: Inset | null;
+  /** How many photo windows were detected (grid hint). */
+  windowCount: number;
+}
+
+export async function fileToFrame(file: File, expectedRatio?: FrameRatio): Promise<PreparedFrame> {
+  if (!file.type.startsWith('image/png')) throw new Error('Frame harus berupa PNG transparan');
   if (file.size > 10 * 1024 * 1024) throw new Error('Frame maksimal 10 MB');
   const img = await loadImage(await fileToDataURL(file));
   const ratio = detectFrameRatio(img);
@@ -88,7 +98,15 @@ export async function fileToFrame(file: File, expectedRatio?: FrameRatio): Promi
     if (pixels[i] === 0) { transparent = true; break; }
   }
   if (!transparent) throw new Error('Frame tidak memiliki jendela transparan. Jangan upload gambar panduan.');
-  return { src: canvas.toDataURL('image/png'), ratio };
+  // Measure the actual photo windows so the layout follows the PNG, not the
+  // previously selected base frame (docs/TEMPLATES.md).
+  const windows = detectTransparentWindows(pixels, size.w, size.h);
+  return {
+    src: canvas.toDataURL('image/png'),
+    ratio,
+    inset: insetFromWindows(windows, size.w, size.h),
+    windowCount: windows.length,
+  };
 }
 
 export function dataURLtoBlob(dataURL: string): Blob {
