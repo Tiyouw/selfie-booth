@@ -40,14 +40,21 @@ export default function ShareModal({
 }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
+  const [qrBig, setQrBig] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // The enlarged QR closes first; a second Esc closes the modal.
+      if (zoom) setZoom(false);
+      else onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [zoom, onClose]);
 
   // QR only for short (remote) links — a 400 KB hash link cannot be encoded.
   useEffect(() => {
@@ -63,6 +70,21 @@ export default function ShareModal({
       active = false;
     };
   }, [link]);
+
+  // Crisp large QR for the fullscreen overlay.
+  useEffect(() => {
+    let active = true;
+    if (!zoom || !link || link.length > 1200) {
+      setQrBig(null);
+      return;
+    }
+    QRCode.toDataURL(link.url, { margin: 2, width: 720 })
+      .then((url) => active && setQrBig(url))
+      .catch(() => active && setQrBig(null));
+    return () => {
+      active = false;
+    };
+  }, [zoom, link]);
 
   const copy = async () => {
     if (!link) return;
@@ -209,13 +231,19 @@ export default function ShareModal({
                     `Link terlalu panjang (${sizeKb} KB) dan kemungkinan gagal dibuka. Bagikan file PNG saja.`}
                 </p>
                 {qr && (
-                  <div className="mt-3 flex items-center gap-3 rounded-lg bg-black/40 p-3">
+                  <button
+                    type="button"
+                    onClick={() => setZoom(true)}
+                    aria-label="Perbesar QR code"
+                    className="mt-3 flex w-full items-center gap-3 rounded-lg bg-black/40 p-3 text-left transition hover:bg-black/60"
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element -- data URL dari library QR */}
-                    <img src={qr} alt="QR code link share" className="h-20 w-20 rounded bg-cream" />
+                    <img src={qr} alt="QR code link share" className="h-20 w-20 shrink-0 rounded bg-cream" />
                     <p className="text-[11px] leading-relaxed text-ink-600">
-                      Scan untuk membuka hasil ini di HP lain.
+                      Scan untuk membuka hasil ini di HP lain.{' '}
+                      <span className="font-semibold text-cream">Klik untuk memperbesar.</span>
                     </p>
-                  </div>
+                  </button>
                 )}
                 {link.provider === 'remote' && link.expiresAt !== undefined && (
                   <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-white/10 p-2.5">
@@ -243,6 +271,26 @@ export default function ShareModal({
           </section>
         </div>
       </div>
+
+      {zoom && qr && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="QR code besar"
+          onClick={() => setZoom(false)}
+          className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-5 bg-black/95 p-6"
+        >
+          <p className="text-sm font-bold uppercase tracking-[0.3em] text-brand">Scan di sini</p>
+          {qrBig ? (
+            // eslint-disable-next-line @next/next/no-img-element -- data URL dari library QR
+            <img src={qrBig} alt="QR code link share" className="w-[min(80vmin,640px)] rounded-2xl bg-cream p-3" />
+          ) : (
+            <div className="h-[min(80vmin,640px)] w-[min(80vmin,640px)] animate-pulse rounded-2xl bg-white/5" />
+          )}
+          {link && <p className="max-w-md truncate font-mono text-[11px] text-ink-600">{link.url}</p>}
+          <p className="text-[11px] text-ink-600">Klik di mana saja atau tekan Esc untuk menutup</p>
+        </div>
+      )}
     </div>
   );
 }
