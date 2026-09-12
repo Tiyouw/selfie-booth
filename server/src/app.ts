@@ -130,10 +130,14 @@ export function buildApp({ config, db, postLimit = 20 }: AppDeps) {
         db.prepare(
           'INSERT INTO designs (id, payload, has_gif, created_at, expires_at, delete_token) VALUES (?, ?, ?, ?, ?, ?)',
         ).run(id, design, gif ? 1 : 0, createdAt, expiresAt, hashToken(deleteToken));
+        // Short links follow the booth's own domain when its origin is
+        // allowlisted (multi-domain setups); otherwise the configured origin.
+        const origin = c.req.header('origin');
+        const linkOrigin = origin && config.allowedOrigins.includes(origin) ? origin : config.frontendOrigin;
         return c.json(
           {
             id,
-            url: `${config.frontendOrigin}/s/${id}`,
+            url: `${linkOrigin}/s/${id}`,
             gifUrl: gif ? `${c.req.url.split('/v1/')[0]}/v1/media/${id}.gif` : undefined,
             expiresAt,
             deleteToken,
