@@ -86,8 +86,11 @@ GET    /v1/health               → {ok: true} (monitoring)
 - **Rate limit**: 20 POST/jam per IP (sliding window di memori — cukup untuk
   satu instance).
 - **CORS**: hanya origin di env `ALLOWED_ORIGINS` (default
-  `https://selfie.tiyoouw.app`), hanya di POST/DELETE. GET publik:
-  `Cache-Control: public, max-age=300` (og.png: 3600).
+  `https://selfie.tiyoouw.app`; beberapa domain dipisah koma), hanya di
+  POST/DELETE. GET publik: `Cache-Control: public, max-age=300` (og.png:
+  3600). Booth multi-domain: link pendek otomatis memakai domain booth asal
+  yang terdaftar di allowlist (fallback `FRONTEND_ORIGIN`) — satu API bisa
+  melayani beberapa domain sekaligus.
 - GET terbuka oleh siapa pun yang punya link — memang begitu desainnya
   (privasi di bawah).
 

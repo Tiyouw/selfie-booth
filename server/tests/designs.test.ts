@@ -76,6 +76,37 @@ test('POST → GET returns the identical payload; DELETE with the token removes 
   }
 });
 
+test('short links follow the allowlisted requesting origin (multi-domain booths)', async () => {
+  const { app, cleanup } = makeApp({ allowedOrigins: 'https://fe.test,https://photobooth.org.test' });
+  try {
+    const res = await app.request('/v1/designs', {
+      method: 'POST',
+      body: designForm(payload()),
+      headers: { origin: 'https://photobooth.org.test' },
+    });
+    assert.equal(res.status, 201);
+    const created = await res.json() as { id: string; url: string };
+    assert.equal(created.url, `https://photobooth.org.test/s/${created.id}`);
+    assert.equal(res.headers.get('access-control-allow-origin'), 'https://photobooth.org.test');
+
+    const noOrigin = await app.request('/v1/designs', { method: 'POST', body: designForm(payload()) });
+    const fallback = await noOrigin.json() as { url: string };
+    assert.ok(fallback.url.startsWith('https://fe.test/s/'));
+
+    const foreign = await app.request('/v1/designs', {
+      method: 'POST',
+      body: designForm(payload()),
+      headers: { origin: 'https://evil.example' },
+    });
+    assert.equal(foreign.status, 201); // non-browser clients can POST; browsers cannot read this response
+    const foreignBody = await foreign.json() as { url: string };
+    assert.ok(foreignBody.url.startsWith('https://fe.test/s/'));
+    assert.equal(foreign.headers.get('access-control-allow-origin'), null);
+  } finally {
+    cleanup();
+  }
+});
+
 test('invalid payloads are rejected with a clear error, never stored silently', async () => {
   const { app, cleanup } = makeApp();
   try {
