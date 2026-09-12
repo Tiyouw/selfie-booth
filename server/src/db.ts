@@ -13,6 +13,18 @@ export interface DesignRow {
   delete_token: string;
 }
 
+export interface FrameRow {
+  id: string;
+  name: string;
+  ratio: string;
+  grid: number;
+  /** JSON-encoded Inset. */
+  inset: string;
+  png: Buffer;
+  size: number;
+  created_at: number;
+}
+
 export function openDb(dataDir: string): Db {
   const db = new Database(join(dataDir, 'meta.sqlite'));
   db.pragma('journal_mode = WAL');
@@ -26,6 +38,17 @@ export function openDb(dataDir: string): Db {
       delete_token TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_designs_expires ON designs(expires_at);
+    CREATE TABLE IF NOT EXISTS frames (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      ratio      TEXT NOT NULL,
+      grid       INTEGER NOT NULL,
+      inset      TEXT NOT NULL,
+      png        BLOB NOT NULL,
+      size       INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_frames_created ON frames(created_at);
   `);
   return db;
 }

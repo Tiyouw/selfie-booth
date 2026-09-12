@@ -4,6 +4,10 @@ import { boothLayout, placePhoto } from './layout';
 export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    if (/^https?:\/\//i.test(src)) {
+      // Community frames load from the share API; without CORS the export canvas would be tainted.
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Gagal memuat gambar'));
     img.src = src;

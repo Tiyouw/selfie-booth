@@ -69,8 +69,30 @@ GET    /v1/designs/:id/og.png   → PNG strip, sisi panjang 1080 (OG/WhatsApp)
 GET    /v1/media/:id.gif        → blob GIF (X-Content-Type-Options: nosniff)
 DELETE /v1/designs/:id          → 204; token di header X-Delete-Token
                                   (bukan query string — token tidak boleh masuk log akses)
+GET    /v1/frames?ratio=1:3     → koleksi frame komunitas: {frames:[{id,name,ratio,grid,inset,createdAt,imageUrl}]}; filter rasio opsional (16:9/9:16/1:3)
+GET    /v1/frames/:id/image     → PNG frame (ACAO: *, Cache-Control immutable — aman untuk canvas lintas origin)
+POST   /v1/frames               → tambah frame komunitas; multipart name + code + png; butuh env FRAME_UPLOAD_CODE
+DELETE /v1/frames/:id           → 204; kode akses di header X-Frame-Code
 GET    /v1/health               → {ok: true} (monitoring)
 ```
+
+### Frame komunitas
+
+- **Koleksi bersama**: frame PNG transparan yang terlihat oleh semua pengunjung
+  semua domain booth (docs/TEMPLATES.md). Tersimpan permanen di SQLite
+  (tabel `frames`, kolom BLOB `png`) — tidak ikut TTL 30 hari.
+- **Akses kode**: POST dan DELETE butuh kode di env `FRAME_UPLOAD_CODE` (sha256 +
+  `timingSafeEqual`, sama seperti delete token). Kosong/absen = koleksi dinon-
+  aktifkan (POST → `403 disabled`). Bagikan kode ini hanya ke pengelola booth
+  (mis. pengurus himasif); tidak diperlukan untuk memilih frame.
+- **Validasi server**: PNG di-decode dengan `@napi-rs/canvas`; ukuran harus
+  persis 1920×1080 / 1080×1920 / 640×1920; jendela transparan diukur server
+  dengan `detectTransparentWindows` (`lib/frameGeom`) — 1–4 jendela (portrait
+  maks 3); `grid` dan `inset` disimpan dari hasil ukur, bukan dari klaim klien.
+- **Batas**: `MAX_FRAME_MB` (default 5) per PNG, rate limit upload terpisah
+  20/jam/IP. `Cache-Control immutable` karena id baru untuk setiap upload;
+  gambar dikirim dengan `Access-Control-Allow-Origin: *` (aset publik) agar
+  cache tidak meracuni render canvas CORS di frontend.
 
 ### Aturan
 
