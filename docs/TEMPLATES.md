@@ -15,6 +15,10 @@ Old shared links and local drafts retain their original asymmetric portrait-thre
 
 Uploaded frames are also kept in a per-device frame library under the `selfie-booth:frames:v1` localStorage key (max 12 entries; same-src uploads refresh the existing entry). The library survives refreshes and "Mulai baru" by design. The Frame panel lists library frames for the currently selected ratio with a delete button per entry; picking one restores its measured geometry and photo count. If the storage quota is exceeded, the frame is still applied to the design but not added to the library, and a toast explains why.
 
+## Community collection
+
+When `NEXT_PUBLIC_SHARE_API` is configured, the Frame panel also shows the **community collection** (`Koleksi komunitas`) — PNG frames stored on the booth API and visible to every visitor of every booth domain (`GET /v1/frames?ratio=…`, served with the measured inset and window count). Adding one requires the shared access code configured on the API via `FRAME_UPLOAD_CODE` (see `server/deploy/api.env.example`): type it into the code field **before** uploading, and the same upload lands in the community collection and this device. With a wrong or missing code the frame is still applied and saved per-device, with a toast saying so. Deleting a community frame uses the same code (`X-Frame-Code` header). Frames live in the API's SQLite store and are not subject to the 30-day design TTL. Without a configured share API only the per-device library is shown.
+
 Version 3 share payloads include layout version (`l`), custom inset (`i`, ordered top/right/bottom/left), and custom grid (`k`). They contain only visible photos. Local drafts use the same versioned payload but retain all four slots under the existing `selfie-booth:draft:v2` storage key for migration compatibility. Readers accept v1/v2 payloads, legacy `|grid` suffixes, and drafts without suffixes; missing layout versions mean version 1.
 
 ## Core checks

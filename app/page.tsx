@@ -7,6 +7,13 @@ import { renderBoothBlob } from '../lib/render';
 import { renderBoothGifBlob } from '../lib/gif';
 import { downloadBlob, fileToFrame, fileToPhotoDataURL } from '../lib/image';
 import { addFrameToLibrary, loadFrameLibrary, removeFrameFromLibrary, type SavedFrame } from '../lib/frameLibrary';
+import {
+  addCommunityFrame,
+  communityEnabled,
+  deleteCommunityFrame,
+  listCommunityFrames,
+  type CommunityFrame,
+} from '../lib/communityFrames';
 import { boothLayout, clamp, photoInset, MAX_ZOOM, MIN_ZOOM } from '../lib/layout';
 import { downloadTemplateGuide, downloadTemplatePNG } from '../lib/template';
 import LayoutChoices from '../components/LayoutChoices';
@@ -39,6 +46,8 @@ export default function Home() {
   const [showFrame, setShowFrame] = useState(true);
   const [templateBusy, setTemplateBusy] = useState(false);
   const [frameLibrary, setFrameLibrary] = useState<SavedFrame[]>([]);
+  const [communityFrames, setCommunityFrames] = useState<CommunityFrame[]>([]);
+  const [frameCode, setFrameCode] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<ShareLink | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
@@ -73,6 +82,22 @@ export default function Home() {
       cancelled = true;
     };
   }, [show]);
+
+  // Community frames are served by the booth API and shared by every visitor.
+  useEffect(() => {
+    if (!communityEnabled()) return;
+    let cancelled = false;
+    listCommunityFrames(state.frameRatio)
+      .then((frames) => {
+        if (!cancelled) setCommunityFrames(frames);
+      })
+      .catch(() => {
+        if (!cancelled) setCommunityFrames([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.frameRatio]);
 
   // Autosave draft (debounced).
   useEffect(() => {
@@ -220,19 +245,31 @@ export default function Home() {
         const name = file.name.replace(/\.png$/i, '').slice(0, 40) || 'Frame';
         const { frames, saved } = addFrameToLibrary({ name, src, ratio, grid, inset });
         setFrameLibrary(frames);
-        const detail = [
-          inset ? 'jendela foto diukur otomatis' : 'frame diterapkan',
-          detectedGrid ? `· frame ini untuk ${detectedGrid} foto` : '',
-          saved ? '· tersimpan ke koleksi' : '· koleksi penuh, hapus frame lain',
-        ]
-          .filter(Boolean)
-          .join(' ');
-        show(detail, saved ? 'success' : 'info');
+        if (communityEnabled() && frameCode.trim()) {
+          try {
+            await addCommunityFrame({ name, code: frameCode.trim(), dataUrl: src });
+            setCommunityFrames(await listCommunityFrames(ratio));
+            show('Frame ditambahkan ke koleksi komunitas', 'success');
+          } catch (err) {
+            show(`${(err as Error).message} Frame tetap tersimpan di perangkat ini.`, 'info');
+          }
+        } else if (communityEnabled()) {
+          show('Frame tersimpan di perangkat ini. Isi kode akses untuk menambahkannya ke koleksi komunitas.', 'info');
+        } else {
+          const detail = [
+            inset ? 'jendela foto diukur otomatis' : 'frame diterapkan',
+            detectedGrid ? `· frame ini untuk ${detectedGrid} foto` : '',
+            saved ? '· tersimpan ke koleksi' : '· koleksi penuh, hapus frame lain',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          show(detail, saved ? 'success' : 'info');
+        }
       } catch (err) {
         show((err as Error).message || 'Gagal memuat frame', 'error');
       }
     },
-    [show],
+    [show, frameCode],
   );
 
   const applySavedFrame = useCallback((frame: SavedFrame) => {
@@ -254,9 +291,44 @@ export default function Home() {
   const removeSavedFrame = useCallback(
     (id: string) => {
       setFrameLibrary(removeFrameFromLibrary(id));
-      show('Frame dihapus dari koleksi', 'info');
+      show('Frame dihapus dari koleksi perangkat ini', 'info');
     },
     [show],
+  );
+
+  const applyCommunityFrame = useCallback((frame: CommunityFrame) => {
+    setState((s) => {
+      if (frame.ratio !== s.frameRatio) return s;
+      return {
+        ...s,
+        frameSrc: frame.imageUrl,
+        frameRatio: frame.ratio,
+        grid: frame.grid,
+        frameGrid: frame.grid,
+        frameInset: frame.inset ?? undefined,
+        layoutVersion: 2,
+      };
+    });
+    setActiveSlot((a) => Math.min(a, frame.grid - 1));
+  }, []);
+
+  const removeCommunityFrame = useCallback(
+    async (frame: CommunityFrame) => {
+      const code = frameCode.trim();
+      if (!code) {
+        show('Isi kode akses dulu untuk menghapus frame komunitas.', 'info');
+        return;
+      }
+      try {
+        await deleteCommunityFrame(frame.id, code);
+        setCommunityFrames((list) => list.filter((f) => f.id !== frame.id));
+        if (currentState.current.frameSrc === frame.imageUrl) chooseFrame(null);
+        show('Frame dihapus dari koleksi komunitas', 'info');
+      } catch (err) {
+        show((err as Error).message, 'error');
+      }
+    },
+    [frameCode, show],
   );
 
   const resetAll = useCallback(() => {
@@ -646,10 +718,57 @@ export default function Home() {
                 className="hidden"
                 onChange={handleFrameUpload}
               />
+              {communityEnabled() && (
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold">
+                      Koleksi komunitas · {communityFrames.length} frame · {state.frameRatio}
+                    </p>
+                    <input
+                      type="text"
+                      value={frameCode}
+                      onChange={(e) => setFrameCode(e.target.value)}
+                      placeholder="Kode akses"
+                      aria-label="Kode akses koleksi komunitas"
+                      className="w-28 rounded-md border border-white/15 bg-ink-950 px-2 py-1 text-[11px] text-cream placeholder:text-ink-600 focus:border-brand focus:outline-none"
+                    />
+                  </div>
+                  {communityFrames.length === 0 ? (
+                    <p className="text-[11px] text-ink-600">Belum ada frame komunitas untuk rasio ini.</p>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-2">
+                      {communityFrames.map((f) => (
+                        <div key={f.id} className="group relative">
+                          <FrameChoice
+                            selected={state.frameSrc === f.imageUrl}
+                            onClick={() => applyCommunityFrame(f)}
+                            label={f.name}
+                            ratio={f.ratio}
+                          >
+                            <img src={f.imageUrl} alt="" className="h-full w-full object-contain" />
+                          </FrameChoice>
+                          <button
+                            type="button"
+                            onClick={() => removeCommunityFrame(f)}
+                            aria-label={`Hapus ${f.name} dari koleksi komunitas`}
+                            title="Hapus dari koleksi komunitas"
+                            className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                          >
+                            <XIcon size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-[11px] text-ink-600">
+                    Terlihat oleh semua pengguna. Isi kode akses di atas sebelum upload untuk menambah frame ke koleksi ini.
+                  </p>
+                </div>
+              )}
               {libraryFrames.length > 0 && (
                 <div>
                   <p className="mb-2 text-xs font-semibold">
-                    Koleksi kamu · {libraryFrames.length} frame · {state.frameRatio}
+                    Koleksi perangkat ini · {libraryFrames.length} frame · {state.frameRatio}
                   </p>
                   <div className="grid grid-cols-4 gap-2">
                     {libraryFrames.map((f) => (
@@ -688,7 +807,7 @@ export default function Home() {
                   finally { setTemplateBusy(false); }
                 }} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/20 disabled:opacity-40">{templateBusy ? 'Menyiapkan…' : 'Unduh template PNG'}</button>
               </div>
-              <p className="mt-2 text-[11px] text-ink-600">Panduan berisi koordinat, ukuran jendela foto, dan area aman. Edit PNG tanpa mengubah ukuran atau jendela transparan — saat upload, jendela transparan diukur otomatis dan foto menyesuaikan posisinya. Upload sekali, frame tersimpan di koleksi dan tetap ada setelah refresh.</p>
+              <p className="mt-2 text-[11px] text-ink-600">Panduan berisi koordinat, ukuran jendela foto, dan area aman. Edit PNG tanpa mengubah ukuran atau jendela transparan — saat upload, jendela transparan diukur otomatis dan foto menyesuaikan posisinya. Ukuran jendela mengikuti frame dasar yang sedang dipilih — pilih dulu frame dasarnya (mis. Polaroid) bila ingin margin seperti itu.</p>
             </div>
           </Panel>
 
