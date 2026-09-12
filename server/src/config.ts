@@ -16,6 +16,10 @@ export interface Config {
   maxDesignBytes: number;
   /** GIF upload ceiling. */
   maxGifBytes: number;
+  /** Shared access code for community frame uploads; empty disables them. */
+  frameUploadCode: string;
+  /** PNG upload ceiling for community frames. */
+  maxFrameBytes: number;
 }
 
 function intEnv(env: Partial<Record<string, string | undefined>>, key: string, fallback: number): number {
@@ -38,5 +42,7 @@ export function loadConfig(env: Partial<Record<string, string | undefined>> = pr
     maxBodyBytes: intEnv(env, 'MAX_BODY_MB', 16) * 1024 * 1024,
     maxDesignBytes: 12 * 1024 * 1024,
     maxGifBytes: 8 * 1024 * 1024,
+    frameUploadCode: env.FRAME_UPLOAD_CODE ?? '',
+    maxFrameBytes: intEnv(env, 'MAX_FRAME_MB', 5) * 1024 * 1024,
   };
 }
