@@ -1,9 +1,10 @@
 # Fase 2 — Share backend VPS (id pendek, viewer, OG, QR)
 
-> **Status implementasi:** kode server (`server/`) dan integrasi FE sudah
-> selesai dan teruji lokal (tes `server/` + integrasi browser di sandbox).
-> Tinggal deploy ke VPS — langkahnya di bagian "Deploy VPS". Fase 1 (GIF strip)
-> sudah berjalan di klien.
+> **Status implementasi:** sudah live di `https://api.tiyoouw.app` (deploy
+> 2026-09-11 oleh agent VPS: Traefik/Coolify sebagai reverse proxy, timer TTL
+> + backup harian aktif). Yang tersisa di sisi FE: set env Vercel
+> `NEXT_PUBLIC_SHARE_API` + `SHARE_API`. Fase 1 (GIF strip) sudah berjalan di
+> klien.
 
 Status: link share **tanpa backend** — seluruh desain dikompres lz-string ke
 `#d=…` (≈10–15 KB per foto). Link panjang bisa terpotong di WhatsApp/SMS dan
@@ -155,6 +156,11 @@ api.tiyoouw.app {
   reverse_proxy 127.0.0.1:8787
 }
 ```
+
+Kalau port 80/443 VPS sudah dipegang reverse proxy lain (mis. Traefik dari
+Coolify), jangan pasang Caddy — cukup arahkan host `api.tiyoouw.app` ke
+`127.0.0.1:8787` (atau `172.17.0.1:8787` dari dalam Docker) lewat dynamic
+config proxy tersebut; hasil akhirnya sama (begitulah deploy produksi saat ini).
 
 - `EnvironmentFile=/etc/selfie-booth/api.env`: `PORT=8787`,
   `DATA_DIR=/var/lib/selfie-booth`,

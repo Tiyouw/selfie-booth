@@ -10,7 +10,11 @@
     "skipLibCheck": true,
     "noEmitOnError": true,
     "rootDir": "..",
-    "outDir": "dist"
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "lz-string": ["node_modules/lz-string"]
+    }
   },
   "include": [
     "src/**/*.ts",
