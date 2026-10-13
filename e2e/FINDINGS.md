@@ -33,8 +33,35 @@ Added `npm run test:e2e`, its Playwright development dependency, an isolated ser
 
 See README.md in this directory for running the suite. Current browser results and service logs are under `.hoplite/artifacts/e2e/`.
 
-## Remaining findings and limits
+## Dependency follow-up — 2026-10-14
 
-The frontend dependency audit reports 10 findings: 1 critical, 7 high, and 2 moderate, involving Next.js, PostCSS, Tailwind and related packages. The API audit reports zero findings. A framework/dependency upgrade remains necessary; the functional fixes do not resolve those vulnerabilities. The repository already documents dependency risk in DEPLOY.md.
+Re-running the original lockfile audit confirmed 10 frontend findings: 1 critical, 7 high, and 2 moderate. These are affected package entries, including transitive effects, rather than 10 independent vulnerabilities. The API audit remained at zero.
+
+- Upgraded Next.js 14.2.15 → 16.4.0, React/React DOM 18.3.1 → 19.3.0, Tailwind 3.4.14 → 4.3.3, and PostCSS 8.4.47 → 8.5.30, including the lockfile.
+- Replaced the Tailwind PostCSS plugin with `@tailwindcss/postcss`, removed redundant Autoprefixer, explicitly scoped CSS source scanning to app/components, and retained the existing theme configuration. Updated renamed radius, blur, shadow, and outline utilities to preserve their previous values.
+- Migrated shared-page metadata and rendering to async route params and updated the camera ref type for React 19.
+- Made the editor inert until shared-link/draft restoration finishes, preventing early clicks after reload from being overwritten by restored state.
+- Standardized the documented/CI runtime on Node 22 and added full frontend/API audit checks to CI.
+
+Full frontend, production-only frontend, and API audits now report **0 findings**. This describes known advisories in the local lockfiles on the review date; it is not a claim that production has been patched or that all security risks are eliminated.
+
+Follow-up validation on Windows with Node 22.16.0 / npm 10.9.2:
+
+- Clean frontend `npm ci` completed with zero audit findings; manifest/lockfile consistency and `git diff --check` passed.
+- 88 frontend/core/camera tests, 17 API tests, both type checks, and the Next.js 16 production build passed.
+- All 15 Chromium scenarios passed after the draft-restoration fix. Production `next start` smoke checks returned 200 for the editor and 404 for an invalid viewer ID.
+- Standard API `npm ci` attempted a native SQLite rebuild and failed because Visual Studio C++ build tools are absent on this machine. For this local validation, `npm --prefix server ci --ignore-scripts` succeeded; the packaged SQLite binary was verified with an in-memory query, then API and browser tests passed. This workaround was used only locally; normal API installation and remote CI were not verified on another environment.
+
+## Remaining device validation and deployment limits
 
 Browser checks use headless Chromium and its simulated video device. Physical camera hardware, real permission prompts, audio output, mobile Web Share, real QR scanning/WhatsApp previews, and other browser engines require device/browser validation. Production deployment state was not checked or modified.
+
+| Validation still required | Acceptance check |
+| --- | --- |
+| Physical camera and real permissions | Over HTTPS, allow/deny permission, select front/rear or USB cameras, unplug/reconnect, and confirm capture/retake preserves existing photos. |
+| Audio and fullscreen | Verify optional countdown sound, mute, fullscreen entry/exit, and recovery after backgrounding on real devices. |
+| Mobile Web Share | On iOS Safari and Android Chrome, share and cancel; verify downloaded files and copied-link fallback. |
+| QR and WhatsApp | Scan a short-link QR with another device and send a production-accessible link to verify the actual OG preview and viewer. |
+| Other browser engines | Repeat upload, export, draft, sharing, and camera flows in Safari and Firefox. Tailwind 4 requires Safari 16.4+, Chromium 111+, and Firefox 128+. |
+
+Deploying the upgraded build and checking its live runtime/version remains separate work.

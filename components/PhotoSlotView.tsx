@@ -187,7 +187,7 @@ export default function PhotoSlotView({
                 e.stopPropagation();
                 onCapture();
               }}
-              className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg bg-brand px-2 py-2 text-xs font-semibold text-ink-950 shadow hover:bg-brand-bright sm:min-h-0 sm:min-w-0 sm:px-3"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg bg-brand px-2 py-2 text-xs font-semibold text-ink-950 shadow-sm hover:bg-brand-bright sm:min-h-0 sm:min-w-0 sm:px-3"
             >
               <CameraIcon size={14} /> <span className="hidden sm:inline">Kamera</span>
             </button>
@@ -276,7 +276,7 @@ function ToolButton({
         e.stopPropagation();
         onClick();
       }}
-      className={`rounded-lg bg-white/15 p-1.5 text-white backdrop-blur transition disabled:opacity-30 ${
+      className={`rounded-lg bg-white/15 p-1.5 text-white backdrop-blur-sm transition disabled:opacity-30 ${
         danger ? 'hover:bg-red-500/70' : 'hover:bg-white/30'
       }`}
     >

@@ -10,7 +10,7 @@ interface CameraPreviewProps {
   state: BoothState;
   activeCell: number | null;
   liveIndex: number | null;
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   ready: boolean;
   mirror: boolean;
   showFrame: boolean;

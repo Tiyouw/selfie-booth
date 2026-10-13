@@ -194,8 +194,9 @@ config proxy tersebut; hasil akhirnya sama (begitulah deploy produksi saat ini).
 - Update: `git pull && npm ci && npm run build && sudo systemctl restart selfie-booth-api`.
 - DNS: `api` → A record ke VPS. HTTPS otomatis oleh Caddy.
 - Log: `journalctl -u selfie-booth-api -f`. Jangan log body/URL lengkap.
-- Catatan keamanan terpisah: audit dependensi FE masih melaporkan temuan
-  critical di Next.js 14.2.15 (lihat DEPLOY.md) — tangani sebelum produksi.
+- Catatan keamanan: dependency frontend telah diperbarui; audit lokal pada
+  14 Oktober 2026 melaporkan 0 temuan frontend dan API. Lihat `DEPLOY.md` dan
+  `e2e/FINDINGS.md` untuk versi, validasi, dan batas pemeriksaan produksi.
 
 ## Privasi
 

@@ -503,8 +503,8 @@ export default function Home() {
   const portrait = state.frameRatio !== '16:9';
 
   return (
-    <main className="glow-bg min-h-screen pb-16">
-      <header className="sticky top-0 z-30 border-b border-white/5 bg-ink-950/80 backdrop-blur">
+    <main className="glow-bg min-h-screen pb-16" inert={!hydrated} aria-busy={!hydrated}>
+      <header className="sticky top-0 z-30 border-b border-white/5 bg-ink-950/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-brand-deep text-ink-950">
@@ -727,7 +727,7 @@ export default function Home() {
                     <img
                       src={state.frameSrc!}
                       alt="frame custom"
-                      className="h-8 w-12 rounded bg-ink-800 object-contain"
+                      className="h-8 w-12 rounded-sm bg-ink-800 object-contain"
                     />
                     <div>
                       <p className="text-xs font-medium">Frame custom</p>
@@ -738,7 +738,7 @@ export default function Home() {
                     type="button"
                     onClick={() => chooseFrame(null)}
                     aria-label="Hapus frame custom"
-                    className="rounded p-1 text-ink-600 hover:text-red-400"
+                    className="rounded-sm p-1 text-ink-600 hover:text-red-400"
                   >
                     <XIcon size={16} />
                   </button>
@@ -771,7 +771,7 @@ export default function Home() {
                       onChange={(e) => setFrameCode(e.target.value)}
                       placeholder="Kode akses"
                       aria-label="Kode akses koleksi komunitas"
-                      className="w-28 rounded-md border border-white/15 bg-ink-950 px-2 py-1 text-[11px] text-cream placeholder:text-ink-600 focus:border-brand focus:outline-none"
+                      className="w-28 rounded-md border border-white/15 bg-ink-950 px-2 py-1 text-[11px] text-cream placeholder:text-ink-600 focus:border-brand focus:outline-hidden"
                     />
                   </div>
                   {communityFrames.length === 0 ? (
@@ -993,7 +993,7 @@ function FrameChoice({
       }`}
     >
       <div
-        className="preview-checker w-full overflow-hidden rounded bg-ink-800"
+        className="preview-checker w-full overflow-hidden rounded-sm bg-ink-800"
         style={{ aspectRatio: ratio.replace(':', ' / '), height: 56, width: 'auto', maxWidth: '100%' }}
       >
         {children}

@@ -93,6 +93,8 @@ untuk subdomain ini). CNAME spesifik selalu menang atas wildcard.
 
 ## Pemeriksaan lokal
 
+Gunakan Node.js 22 atau lebih baru, sama dengan runtime API dan CI.
+
 ```bash
 npm ci
 npm test
@@ -113,8 +115,19 @@ lihat `e2e/README.md` untuk browser, port, cakupan, dan hasil tes.
 
 ## Keamanan dependensi
 
-Audit pada 9 September 2026 masih melaporkan temuan **critical** pada Next.js
-14.2.15 dan **high** pada PostCSS. Tes dan build yang lulus bukan bukti bebas
-kerentanan. Pembaruan framework/dependensi perlu ditangani dan diverifikasi
-terpisah sebelum menganggap deployment produksi aman; jangan menjalankan
-`npm audit fix --force` tanpa meninjau perubahan versi mayor.
+Audit ulang pada 14 Oktober 2026 mengonfirmasi 10 temuan frontend sebelum
+pembaruan (1 critical, 7 high, 2 moderate). Next.js diperbarui ke **16.4.0**,
+React/React DOM ke **19.3.0**, Tailwind ke **4.3.3**, dan PostCSS ke **8.5.30**.
+Konfigurasi PostCSS, utilitas CSS, tipe React, dan parameter async halaman share
+disesuaikan. Audit penuh frontend dan API kini melaporkan **0 temuan**;
+CI menjalankan `npm audit --audit-level=moderate` untuk keduanya.
+
+Angka audit hanya mencakup advisory yang diketahui saat pemeriksaan, bukan
+jaminan bebas kerentanan. Jalankan ulang audit sebelum deployment. Perubahan
+lokal belum diterapkan ke produksi; hasil audit repository tidak membuktikan
+versi yang sedang berjalan di deployment.
+
+Upgrade ini membutuhkan browser modern: Safari **16.4+**, Chrome/Edge **111+**,
+dan Firefox **128+** (batas Tailwind 4). Perangkat dengan browser lebih lama
+perlu diperbarui. Validasi kamera, izin, suara, Web Share, QR, dan preview
+WhatsApp di perangkat asli masih diperlukan; lihat `e2e/FINDINGS.md`.

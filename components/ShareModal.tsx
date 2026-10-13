@@ -170,7 +170,7 @@ export default function ShareModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-label="Bagikan"
@@ -179,7 +179,7 @@ export default function ShareModal({
       <div ref={dialogRef} className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
           <h3 className="text-sm font-semibold">Simpan & Bagikan</h3>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label="Tutup" className="rounded p-1 text-ink-600 hover:text-cream">
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Tutup" className="rounded-sm p-1 text-ink-600 hover:text-cream">
             <XIcon size={18} />
           </button>
         </div>
@@ -250,7 +250,7 @@ export default function ShareModal({
                     value={link.url}
                     onFocus={(e) => e.currentTarget.select()}
                     aria-label="Link share"
-                    className="min-w-0 flex-1 truncate bg-transparent font-mono text-xs text-ink-600 outline-none"
+                    className="min-w-0 flex-1 truncate bg-transparent font-mono text-xs text-ink-600 outline-hidden"
                   />
                   <button
                     type="button"
@@ -289,7 +289,7 @@ export default function ShareModal({
                     className="mt-3 flex w-full items-center gap-3 rounded-lg bg-black/40 p-3 text-left transition hover:bg-black/60"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- data URL dari library QR */}
-                    <img src={qr} alt="QR code link share" className="h-20 w-20 shrink-0 rounded bg-cream" />
+                    <img src={qr} alt="QR code link share" className="h-20 w-20 shrink-0 rounded-sm bg-cream" />
                     <p className="text-[11px] leading-relaxed text-ink-600">
                       Scan untuk membuka hasil ini di HP lain.{' '}
                       <span className="font-semibold text-cream">Klik untuk memperbesar.</span>

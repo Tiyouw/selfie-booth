@@ -251,7 +251,7 @@ export default function CameraModal({ state, targets, onClose, onConfirm }: Came
           : `Bersiap untuk foto ${session.active + 1}`;
 
   return (
-    <div ref={rootRef} role="dialog" aria-modal="true" aria-labelledby="camera-session-title" tabIndex={-1} className="fixed inset-0 z-50 flex h-[100dvh] flex-col bg-ink-950 text-cream outline-none">
+    <div ref={rootRef} role="dialog" aria-modal="true" aria-labelledby="camera-session-title" tabIndex={-1} className="fixed inset-0 z-50 flex h-[100dvh] flex-col bg-ink-950 text-cream outline-hidden">
       <video ref={camera.videoRef} autoPlay muted playsInline aria-hidden="true" tabIndex={-1} className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0" />
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
@@ -279,9 +279,9 @@ export default function CameraModal({ state, targets, onClose, onConfirm }: Came
 
           <div className="relative h-[45dvh] min-h-[230px] overflow-hidden rounded-2xl border border-white/10 bg-black lg:h-auto lg:min-h-0 lg:flex-1">
             <CameraPreview state={previewState} activeCell={complete ? null : session.active} liveIndex={liveIndex} videoRef={camera.videoRef} ready={camera.ready} mirror={mirror} showFrame={showFrame} label={complete ? 'Komposisi hasil sesi foto' : frozen ? `Hasil foto ${session.active + 1}` : `Pratinjau kamera untuk kotak ${session.active + 1}`} />
-            {!complete && <span className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/65 px-3 py-1.5 text-xs font-medium backdrop-blur">{frozen ? 'Hasil foto' : 'Live'} · {session.active + 1}</span>}
+            {!complete && <span className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/65 px-3 py-1.5 text-xs font-medium backdrop-blur-sm">{frozen ? 'Hasil foto' : 'Live'} · {session.active + 1}</span>}
             {session.phase === 'countdown' && <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center bg-black/10"><span key={session.version} className="countdown-pop text-[112px] font-semibold leading-none text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.65)] sm:text-[160px]" role="timer" aria-label={`Foto dalam ${session.remaining} detik`}>{session.remaining}</span><span className="mt-4 rounded-full bg-black/60 px-4 py-2 text-sm">Lihat kamera & senyum!</span></div>}
-            {session.phase === 'paused' && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 p-6"><div className="max-w-md rounded-2xl border border-white/15 bg-black/65 px-6 py-5 text-center backdrop-blur"><p className="text-xl font-semibold">Sesi dijeda</p><p className="mt-2 text-sm leading-relaxed text-white/70">{session.pauseReason}</p></div></div>}
+            {session.phase === 'paused' && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 p-6"><div className="max-w-md rounded-2xl border border-white/15 bg-black/65 px-6 py-5 text-center backdrop-blur-sm"><p className="text-xl font-semibold">Sesi dijeda</p><p className="mt-2 text-sm leading-relaxed text-white/70">{session.pauseReason}</p></div></div>}
             {flash && <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-white/80 motion-reduce:hidden" />}
           </div>
 
@@ -327,7 +327,7 @@ export default function CameraModal({ state, targets, onClose, onConfirm }: Came
         </aside>
       </div>
 
-      {closing && <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"><div ref={closeDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="discard-session-title" aria-describedby="discard-session-description" className="w-full max-w-md rounded-2xl border border-white/15 bg-ink-900 p-6 shadow-2xl"><h3 id="discard-session-title" className="text-lg font-semibold">Keluar dari sesi foto?</h3><p id="discard-session-description" className="mt-2 text-sm leading-relaxed text-white/60">Hasil sesi ini belum disimpan. Foto sebelumnya akan tetap ada jika kamu keluar.</p><div className="mt-6 flex flex-wrap justify-end gap-2"><button ref={cancelCloseRef} type="button" onClick={() => setClosing(false)} className={secondary}>Kembali ke sesi</button><button type="button" onClick={discard} className="min-h-11 rounded-xl bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/25">Keluar tanpa menyimpan</button></div></div></div>}
+      {closing && <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"><div ref={closeDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="discard-session-title" aria-describedby="discard-session-description" className="w-full max-w-md rounded-2xl border border-white/15 bg-ink-900 p-6 shadow-2xl"><h3 id="discard-session-title" className="text-lg font-semibold">Keluar dari sesi foto?</h3><p id="discard-session-description" className="mt-2 text-sm leading-relaxed text-white/60">Hasil sesi ini belum disimpan. Foto sebelumnya akan tetap ada jika kamu keluar.</p><div className="mt-6 flex flex-wrap justify-end gap-2"><button ref={cancelCloseRef} type="button" onClick={() => setClosing(false)} className={secondary}>Kembali ke sesi</button><button type="button" onClick={discard} className="min-h-11 rounded-xl bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/25">Keluar tanpa menyimpan</button></div></div></div>}
     </div>
   );
 }

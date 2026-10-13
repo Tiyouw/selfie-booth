@@ -29,7 +29,10 @@ function validId(id: string): boolean {
   return /^[A-Za-z0-9]{8}$/.test(id);
 }
 
-export async function generateMetadata({ params: { id } }: { params: { id: string } }): Promise<Metadata> {
+type PageProps = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { id } = await params;
   const og = validId(id) ? `${API}/v1/designs/${encodeURIComponent(id)}/og.png` : '';
   return {
     title: 'Selfie Booth',
@@ -39,7 +42,8 @@ export async function generateMetadata({ params: { id } }: { params: { id: strin
   };
 }
 
-export default async function SharedDesignPage({ params: { id } }: { params: { id: string } }) {
+export default async function SharedDesignPage({ params }: PageProps) {
+  const { id } = await params;
   const design = validId(id) ? await loadDesign(id) : null;
   if (!design) notFound();
 
