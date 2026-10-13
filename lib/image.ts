@@ -101,6 +101,10 @@ export async function fileToFrame(file: File, expectedRatio?: FrameRatio): Promi
   // Measure the actual photo windows so the layout follows the PNG, not the
   // previously selected base frame (docs/TEMPLATES.md).
   const windows = detectTransparentWindows(pixels, size.w, size.h);
+  const maxGrid = ratio === '16:9' ? 4 : 3;
+  if (windows.length < 1 || windows.length > maxGrid) {
+    throw new Error(`Frame harus memiliki 1–${maxGrid} jendela foto transparan yang jelas.`);
+  }
   return {
     src: canvas.toDataURL('image/png'),
     ratio,

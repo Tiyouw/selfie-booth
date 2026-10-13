@@ -1,12 +1,13 @@
 import { createCanvas, loadImage, type Image as CanvasImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { readFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { BoothState, Rect } from '../../lib/types';
 import { boothLayout, placePhoto } from '../../lib/layout';
 import { isBuiltinFrame } from '../../lib/frames';
 
 /** public/frames at the repo root (server lives in the same repo). */
-const FRAME_ROOT = join(dirname(__dirname), '..', '..', 'public', 'frames');
+// This module runs from server/dist/server/src after the server build.
+const FRAME_ROOT = join(__dirname, '..', '..', '..', '..', 'public', 'frames');
 
 function roundRectPath(ctx: SKRSContext2D, r: Rect, radius: number) {
   const { x, y, w, h } = r;
@@ -58,7 +59,8 @@ export async function renderOgPng(state: BoothState, longSide = 1080): Promise<B
     const slot = state.slots[i];
     const cell = cells[i];
     if (!cell) continue;
-    const radius = Math.min(12, cell.w * 0.06, cell.h * 0.06);
+    const nativeCell = native.cells[i];
+    const radius = Math.min(12, nativeCell.w * 0.06, nativeCell.h * 0.06) * scale;
     if (!slot?.src) {
       ctx.save();
       ctx.fillStyle = '#161616';

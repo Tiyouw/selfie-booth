@@ -1,4 +1,5 @@
 import type { FrameRatio, GridCount, Inset } from './types';
+import { fileToDataURL } from './image';
 
 /**
  * Shared community frame collection served by the booth API
@@ -49,6 +50,15 @@ export async function listCommunityFrames(ratio: FrameRatio, fetchFn: typeof fet
   if (!res.ok) throw new Error('Gagal memuat koleksi komunitas.');
   const body = (await res.json()) as { frames?: unknown[] };
   return (body.frames ?? []).map(parseRecord).filter((f): f is CommunityFrame => f !== null);
+}
+
+/** Embed a selected overlay so drafts and links survive collection deletion. */
+export async function communityFrameDataURL(frame: CommunityFrame, fetchFn: typeof fetch = fetch): Promise<string> {
+  const res = await fetchFn(frame.imageUrl);
+  if (!res.ok) throw new Error('Gagal memuat frame komunitas. Coba lagi.');
+  const blob = await res.blob();
+  if (blob.type !== 'image/png') throw new Error('Frame komunitas bukan PNG yang valid.');
+  return fileToDataURL(new File([blob], 'frame.png', { type: 'image/png' }));
 }
 
 export async function addCommunityFrame(

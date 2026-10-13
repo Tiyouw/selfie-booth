@@ -17,7 +17,7 @@ code. Frontend tetap di Vercel; semuanya dalam satu repo — lihat
 
 ```
 Vercel (selfie.tiyoouw.app)           VPS (api.tiyoouw.app)
-├── Next.js app (tidak berubah)       ├── server/ (Hono, Node 20)
+├── Next.js app (tidak berubah)       ├── server/ (Hono, Node 22+)
 ├── app/s/[id]/page.tsx ──GET───────► │   POST   /v1/designs
 │    viewer + OG metadata             │   GET    /v1/designs/:id
 ├── lib/share.ts                      │   GET    /v1/designs/:id/og.png

@@ -21,6 +21,8 @@ When `NEXT_PUBLIC_SHARE_API` is configured, the Frame panel also shows the **com
 
 Version 3 share payloads include layout version (`l`), custom inset (`i`, ordered top/right/bottom/left), and custom grid (`k`). They contain only visible photos. Local drafts use the same versioned payload but retain all four slots under the existing `selfie-booth:draft:v2` storage key for migration compatibility. Readers accept v1/v2 payloads, legacy `|grid` suffixes, and drafts without suffixes; missing layout versions mean version 1.
 
+Selected community overlays are embedded as PNG data URLs in the design. This preserves them in drafts, hash links, short-link viewers, and exports even after the original collection entry is deleted. Selecting a frame waits for its image to load; a failed download leaves the current design unchanged.
+
 ## Core checks
 
 No additional test dependencies are required:

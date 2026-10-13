@@ -177,28 +177,30 @@ export default function PhotoSlotView({
           }
         />
       ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-3 text-center text-ink-600">
-          <span className="text-xs font-semibold uppercase tracking-wider">Foto {index + 1}</span>
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1 text-center text-ink-600 sm:gap-3 sm:p-3">
+          <span className="hidden text-xs font-semibold uppercase tracking-wider sm:inline">Foto {index + 1}</span>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
+              aria-label="Kamera"
               onClick={(e) => {
                 e.stopPropagation();
                 onCapture();
               }}
-              className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-ink-950 shadow hover:bg-brand-bright"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg bg-brand px-2 py-2 text-xs font-semibold text-ink-950 shadow hover:bg-brand-bright sm:min-h-0 sm:min-w-0 sm:px-3"
             >
-              <CameraIcon size={14} /> Kamera
+              <CameraIcon size={14} /> <span className="hidden sm:inline">Kamera</span>
             </button>
             <button
               type="button"
+              aria-label="Upload"
               onClick={(e) => {
                 e.stopPropagation();
                 fileRef.current?.click();
               }}
-              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold hover:bg-white/20"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg bg-white/10 px-2 py-2 text-xs font-semibold hover:bg-white/20 sm:min-h-0 sm:min-w-0 sm:px-3"
             >
-              <UploadIcon size={14} /> Upload
+              <UploadIcon size={14} /> <span className="hidden sm:inline">Upload</span>
             </button>
           </div>
         </div>

@@ -10,6 +10,7 @@ import { addFrameToLibrary, loadFrameLibrary, removeFrameFromLibrary, type Saved
 import {
   addCommunityFrame,
   communityEnabled,
+  communityFrameDataURL,
   deleteCommunityFrame,
   listCommunityFrames,
   type CommunityFrame,
@@ -56,6 +57,10 @@ export default function Home() {
   const frameInputRef = useRef<HTMLInputElement>(null);
   const currentState = useRef(state);
   currentState.current = state;
+  const photoRequests = useRef([0, 0, 0, 0]);
+  const frameRequest = useRef(0);
+  const communitySources = useRef(new Map<string, string>());
+  const shareRequest = useRef(0);
 
   // Load: shared link first, then local draft.
   useEffect(() => {
@@ -138,6 +143,7 @@ export default function Home() {
 
   const setPhoto = useCallback(
     (index: number, src: string | null) => {
+      photoRequests.current[index]++;
       updateSlot(index, { src, zoom: 1, ox: 0, oy: 0 });
       setActiveSlot(index);
     },
@@ -150,6 +156,7 @@ export default function Home() {
   }, []);
 
   const setRatio = useCallback((ratio: FrameRatio) => {
+    frameRequest.current++;
     setState((s) => {
       if (s.frameRatio === ratio) return s;
       const variant = frameVariant(s.frameSrc, ratio);
@@ -161,6 +168,7 @@ export default function Home() {
   }, []);
 
   const chooseFrame = useCallback((src: string | null) => {
+    frameRequest.current++;
     setState((s) => {
       const builtin = findBuiltinFrame(src);
       return { ...s, frameSrc: src, frameRatio: builtin ? builtin.ratio : s.frameRatio,
@@ -170,10 +178,13 @@ export default function Home() {
 
   const uploadPhoto = useCallback(
     async (index: number, file: File) => {
+      const request = ++photoRequests.current[index];
       try {
         const src = await fileToPhotoDataURL(file);
+        if (photoRequests.current[index] !== request) return;
         setPhoto(index, src);
       } catch (e) {
+        if (photoRequests.current[index] !== request) return;
         show((e as Error).message || 'Gagal memproses gambar', 'error');
       }
     },
@@ -205,6 +216,10 @@ export default function Home() {
   };
 
   const moveSlot = useCallback((index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= currentState.current.grid) return;
+    photoRequests.current[index]++;
+    photoRequests.current[target]++;
     setState((s) => {
       const j = index + dir;
       if (j < 0 || j >= s.grid) return s;
@@ -220,10 +235,12 @@ export default function Home() {
       const file = e.target.files?.[0];
       e.target.value = '';
       if (!file) return;
+      const request = ++frameRequest.current;
       const original = currentState.current;
       try {
         const size = boothLayout(original);
         const { src, ratio, inset, windowCount } = await fileToFrame(file, original.frameRatio);
+        if (frameRequest.current !== request) return;
         if (currentState.current !== original) throw new Error('Desain berubah. Pilih ulang frame untuk layout terbaru.');
         // The uploaded PNG's own transparent windows drive the layout —
         // not whichever base frame happened to be selected (docs/TEMPLATES.md).
@@ -251,21 +268,22 @@ export default function Home() {
             setCommunityFrames(await listCommunityFrames(ratio));
             show('Frame ditambahkan ke koleksi komunitas', 'success');
           } catch (err) {
-            show(`${(err as Error).message} Frame tetap tersimpan di perangkat ini.`, 'info');
+            show(`${(err as Error).message} ${saved ? 'Frame tetap tersimpan di perangkat ini.' : 'Frame diterapkan, tetapi penyimpanan perangkat penuh.'}`, 'info');
           }
         } else if (communityEnabled()) {
-          show('Frame tersimpan di perangkat ini. Isi kode akses untuk menambahkannya ke koleksi komunitas.', 'info');
+          show(`${saved ? 'Frame tersimpan di perangkat ini.' : 'Frame diterapkan, tetapi penyimpanan perangkat penuh.'} Isi kode akses untuk menambahkannya ke koleksi komunitas.`, 'info');
         } else {
           const detail = [
             inset ? 'jendela foto diukur otomatis' : 'frame diterapkan',
             detectedGrid ? `· frame ini untuk ${detectedGrid} foto` : '',
-            saved ? '· tersimpan ke koleksi' : '· koleksi penuh, hapus frame lain',
+            saved ? '· tersimpan ke koleksi' : '· penyimpanan penuh, frame belum tersimpan',
           ]
             .filter(Boolean)
             .join(' ');
           show(detail, saved ? 'success' : 'info');
         }
       } catch (err) {
+        if (frameRequest.current !== request) return;
         show((err as Error).message || 'Gagal memuat frame', 'error');
       }
     },
@@ -273,6 +291,7 @@ export default function Home() {
   );
 
   const applySavedFrame = useCallback((frame: SavedFrame) => {
+    frameRequest.current++;
     setState((s) => {
       if (frame.ratio !== s.frameRatio) return s;
       return {
@@ -296,21 +315,29 @@ export default function Home() {
     [show],
   );
 
-  const applyCommunityFrame = useCallback((frame: CommunityFrame) => {
-    setState((s) => {
-      if (frame.ratio !== s.frameRatio) return s;
-      return {
-        ...s,
-        frameSrc: frame.imageUrl,
-        frameRatio: frame.ratio,
-        grid: frame.grid,
-        frameGrid: frame.grid,
-        frameInset: frame.inset ?? undefined,
-        layoutVersion: 2,
-      };
-    });
-    setActiveSlot((a) => Math.min(a, frame.grid - 1));
-  }, []);
+  const applyCommunityFrame = useCallback(async (frame: CommunityFrame) => {
+    const request = ++frameRequest.current;
+    try {
+      const src = communitySources.current.get(frame.id) ?? await communityFrameDataURL(frame);
+      if (frameRequest.current !== request || currentState.current.frameRatio !== frame.ratio) return;
+      communitySources.current.set(frame.id, src);
+      setState((s) => {
+        if (frame.ratio !== s.frameRatio) return s;
+        return {
+          ...s,
+          frameSrc: src,
+          frameRatio: frame.ratio,
+          grid: frame.grid,
+          frameGrid: frame.grid,
+          frameInset: frame.inset ?? undefined,
+          layoutVersion: 2,
+        };
+      });
+      setActiveSlot((a) => Math.min(a, frame.grid - 1));
+    } catch (err) {
+      if (frameRequest.current === request) show((err as Error).message, 'error');
+    }
+  }, [show]);
 
   const removeCommunityFrame = useCallback(
     async (frame: CommunityFrame) => {
@@ -322,7 +349,7 @@ export default function Home() {
       try {
         await deleteCommunityFrame(frame.id, code);
         setCommunityFrames((list) => list.filter((f) => f.id !== frame.id));
-        if (currentState.current.frameSrc === frame.imageUrl) chooseFrame(null);
+        // A selected frame is an embedded snapshot and remains usable after deletion.
         show('Frame dihapus dari koleksi komunitas', 'info');
       } catch (err) {
         show((err as Error).message, 'error');
@@ -333,6 +360,9 @@ export default function Home() {
 
   const resetAll = useCallback(() => {
     if (state.slots.some((s) => s.src) && !window.confirm('Mulai baru? Semua foto, termasuk yang tersembunyi, akan dihapus.')) return;
+    photoRequests.current = photoRequests.current.map((request) => request + 1);
+    frameRequest.current++;
+    shareRequest.current++;
     clearDraft();
     setState(defaultState(3));
     setActiveSlot(0);
@@ -407,18 +437,26 @@ export default function Home() {
   }, [state, show]);
 
   const openShare = useCallback(async () => {
+    const request = ++shareRequest.current;
     setShareOpen(true);
     setShareLink(null);
     setShareLoading(true);
     try {
-      setShareLink(await shareProvider.createLink(state));
+      const link = await shareProvider.createLink(state);
+      if (shareRequest.current === request) setShareLink(link);
     } catch {
+      if (shareRequest.current !== request) return;
       show('Gagal membuat link', 'error');
       setShareOpen(false);
     } finally {
-      setShareLoading(false);
+      if (shareRequest.current === request) setShareLoading(false);
     }
   }, [state, show]);
+
+  const closeShare = useCallback(() => {
+    shareRequest.current++;
+    setShareOpen(false);
+  }, []);
 
   // Keyboard: zoom / nudge / delete for the active photo.
   useEffect(() => {
@@ -479,11 +517,12 @@ export default function Home() {
               <p className="text-[11px] text-ink-600">by tiyoouw.app</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               type="button"
               onClick={resetAll}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-600 hover:bg-white/5 hover:text-cream"
+              aria-label="Mulai baru"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium text-ink-600 hover:bg-white/5 hover:text-cream sm:px-3"
               title="Mulai desain baru"
             >
               <ResetIcon size={16} /> <span className="hidden sm:inline">Mulai baru</span>
@@ -492,7 +531,8 @@ export default function Home() {
               type="button"
               onClick={openShare}
               disabled={filled === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Bagikan"
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2 py-2 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3"
               title={filled === 0 ? 'Tambahkan foto dulu' : 'Bagikan'}
             >
               <ShareIcon size={16} /> <span className="hidden sm:inline">Bagikan</span>
@@ -501,7 +541,8 @@ export default function Home() {
               type="button"
               onClick={handleDownload}
               disabled={busy !== null || filled === 0}
-              className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-ink-950 hover:bg-brand-bright disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Download PNG"
+              className="flex items-center gap-1.5 rounded-lg bg-brand px-2 py-2 text-sm font-semibold text-ink-950 hover:bg-brand-bright disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
               title={filled === 0 ? 'Tambahkan foto dulu' : 'Download PNG'}
             >
               <DownloadIcon size={16} />
@@ -740,7 +781,7 @@ export default function Home() {
                       {communityFrames.map((f) => (
                         <div key={f.id} className="group relative">
                           <FrameChoice
-                            selected={state.frameSrc === f.imageUrl}
+                            selected={state.frameSrc === f.imageUrl || state.frameSrc === communitySources.current.get(f.id)}
                             onClick={() => applyCommunityFrame(f)}
                             label={f.name}
                             ratio={f.ratio}
@@ -883,6 +924,7 @@ export default function Home() {
           targets={captureTargets}
           onClose={() => setCaptureTargets(null)}
           onConfirm={(photos, capturedIndices) => {
+            capturedIndices.forEach((index) => photoRequests.current[index]++);
             setState((s) => ({ ...s, slots: mergeCapturedSlots(s.slots, photos, capturedIndices) }));
             setActiveSlot(captureTargets[0]);
             setCaptureTargets(null);
@@ -902,7 +944,7 @@ export default function Home() {
           onShareGif={handleShareGif}
           gifBusy={busy === 'gif'}
           gifEnabled={filled > 0}
-          onClose={() => setShareOpen(false)}
+          onClose={closeShare}
           onCopied={(ok) => show(ok ? 'Link tersalin' : 'Gagal menyalin, salin manual', ok ? 'success' : 'error')}
           onDeleted={(ok) => {
             show(ok ? 'Link dihapus dari server' : 'Gagal menghapus link', ok ? 'success' : 'error');

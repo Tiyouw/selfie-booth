@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import type { ShareLink } from '../lib/share';
 import { SHARE_API } from '../lib/share';
@@ -44,17 +44,68 @@ export default function ShareModal({
   const [zoom, setZoom] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const qrDialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const zoomRef = useRef(zoom);
+  const onCloseRef = useRef(onClose);
+  zoomRef.current = zoom;
+  onCloseRef.current = onClose;
 
   useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus();
+    const focusable = 'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const scope = () => zoomRef.current ? qrDialogRef.current : dialogRef.current;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // The enlarged QR closes first; a second Esc closes the modal.
-      if (zoom) setZoom(false);
-      else onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        // The enlarged QR closes first; a second Esc closes the modal.
+        if (zoomRef.current) setZoom(false);
+        else onCloseRef.current();
+      }
+      if (e.key !== 'Tab') return;
+      const root = scope();
+      const items = Array.from(root?.querySelectorAll<HTMLElement>(focusable) ?? [])
+        .filter((el) => el.getClientRects().length > 0);
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first) {
+        e.preventDefault();
+        root?.focus();
+      } else if (e.shiftKey && (document.activeElement === first || !root?.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !root?.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    const onFocus = (e: FocusEvent) => {
+      const root = scope();
+      if (root && !root.contains(e.target as Node)) {
+        (root.querySelector<HTMLElement>(focusable) ?? root).focus();
+      }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [zoom, onClose]);
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('focusin', onFocus);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!zoom) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    qrDialogRef.current?.focus();
+    return () => { if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [zoom]);
 
   // QR only for short (remote) links — a 400 KB hash link cannot be encoded.
   useEffect(() => {
@@ -125,15 +176,15 @@ export default function ShareModal({
       aria-label="Bagikan"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <div ref={dialogRef} className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
           <h3 className="text-sm font-semibold">Simpan & Bagikan</h3>
-          <button type="button" onClick={onClose} aria-label="Tutup" className="rounded p-1 text-ink-600 hover:text-cream">
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Tutup" className="rounded p-1 text-ink-600 hover:text-cream">
             <XIcon size={18} />
           </button>
         </div>
 
-        <div className="space-y-5 p-5">
+        <div className="min-h-0 space-y-5 overflow-y-auto p-5">
           <section>
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-600">Hasil gambar</h4>
             <p className="mb-3 text-xs text-ink-600">
@@ -274,6 +325,8 @@ export default function ShareModal({
 
       {zoom && qr && (
         <div
+          ref={qrDialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label="QR code besar"
