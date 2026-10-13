@@ -69,10 +69,12 @@ untuk subdomain ini). CNAME spesifik selalu menang atas wildcard.
   (`inset` = area transparan tempat foto diletakkan). Tambah frame baru: taruh
   PNG/SVG 1920×1080, 1080×1920, atau 640×1920, lalu tambahkan entri di `BUILTIN_FRAMES`.
   Frame default bisa di-regenerate dengan `python3 scripts/gen-frames.py`.
-- **Share link**: desain di-encode ke URL hash (`#d=…`, lz-string). Foto dikecilkan
-  ke 720px. Ukuran tergantung isi foto dan frame; link panjang tetap dapat terpotong
-  oleh aplikasi chat. Frame custom tidak dihapus diam-diam. Backend VPS + id pendek
-  belum diimplementasikan: lihat `docs/SHARE_BACKEND.md`.
+- **Share link**: set `NEXT_PUBLIC_SHARE_API` untuk memakai backend VPS + link
+  pendek `/s/:id`, viewer, OG image, dan QR. `SHARE_API` dapat mengatur alamat API
+  untuk viewer server-side. Tanpa API, atau saat API gagal, desain memakai URL
+  hash (`#d=…`, lz-string). Foto dikecilkan ke 720px; link hash panjang tetap
+  dapat terpotong oleh aplikasi chat. Frame komunitas yang dipilih disalin ke
+  desain sebagai PNG agar draft/link tetap utuh. Lihat `docs/SHARE_BACKEND.md`.
 - **Draft**: payload v3 di `localStorage` (`selfie-booth:draft:v2`, key dipertahankan
   untuk migrasi). Empat slot disimpan lokal; slot tersembunyi tidak masuk share/export.
   Desain v1/v2 mempertahankan geometri portrait lama sampai layout dipilih ulang.
@@ -104,6 +106,10 @@ perintah setup dan dev server. CI menjalankan tes, typecheck, dan build.
 
 Verifikasi perangkat asli tetap diperlukan untuk izin webcam, pemilihan perangkat,
 output suara, dan dukungan fullscreen masing-masing browser.
+
+Tes browser otomatis: `npm run test:e2e` (install dependensi root dan `server/`
+terlebih dahulu). Runner memakai API/SQLite sementara dan kamera simulasi;
+lihat `e2e/README.md` untuk browser, port, cakupan, dan hasil tes.
 
 ## Keamanan dependensi
 

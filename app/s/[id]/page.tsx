@@ -4,7 +4,7 @@ import type { BoothState } from '@/lib/types';
 import { encodeState, sanitizeState } from '@/lib/state';
 import ViewerActions from './ViewerActions';
 
-const API = process.env.SHARE_API || process.env.NEXT_PUBLIC_SHARE_API || '';
+const API = (process.env.SHARE_API || process.env.NEXT_PUBLIC_SHARE_API || '').replace(/\/$/, '');
 
 interface LoadedDesign {
   state: BoothState;

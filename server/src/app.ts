@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { timingSafeEqual } from 'node:crypto';
 import { createCanvas, loadImage, type Image as CanvasImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
@@ -124,6 +125,10 @@ export function buildApp({ config, db, postLimit = 20, frameLimit = 20 }: AppDep
     console.error(err);
     return jsonError(c, 500, 'internal', 'Kesalahan server.');
   });
+  app.use('/v1/*', bodyLimit({
+    maxSize: config.maxBodyBytes,
+    onError: (c) => jsonError(c, 413, 'too_large', `Body melebihi ${Math.round(config.maxBodyBytes / 1024 / 1024)} MB.`),
+  }));
   app.notFound((c) => jsonError(c, 404, 'not_found', 'Endpoint tidak ditemukan.'));
 
   app.get('/v1/health', (c) => c.json({ ok: true }));
@@ -147,7 +152,7 @@ export function buildApp({ config, db, postLimit = 20, frameLimit = 20 }: AppDep
     if (typeof design !== 'string' || design.length === 0) {
       return jsonError(c, 400, 'bad_request', 'Field design wajib berupa string JSON.');
     }
-    if (design.length > config.maxDesignBytes) {
+    if (Buffer.byteLength(design, 'utf8') > config.maxDesignBytes) {
       return jsonError(c, 413, 'too_large', `Design melebihi ${Math.round(config.maxDesignBytes / 1024 / 1024)} MB.`);
     }
     let payload: unknown;

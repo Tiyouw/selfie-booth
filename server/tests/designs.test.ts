@@ -8,13 +8,14 @@ import { buildApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { openDb } from '../src/db';
 import { expireDesigns } from '../src/expire';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 
 /** 1×1 transparent PNG. */
 const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 /** 1×1 transparent GIF. */
 const GIF_BASE64 = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
-function makeApp(opts: { postLimit?: number; allowedOrigins?: string } = {}) {
+function makeApp(opts: { postLimit?: number; allowedOrigins?: string; maxBodyBytes?: number; maxDesignBytes?: number } = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'selfie-booth-test-'));
   const config = loadConfig({
     DATA_DIR: dataDir,
@@ -22,6 +23,8 @@ function makeApp(opts: { postLimit?: number; allowedOrigins?: string } = {}) {
     FRONTEND_ORIGIN: 'https://fe.test',
     ALLOWED_ORIGINS: opts.allowedOrigins ?? 'https://fe.test',
   });
+  if (opts.maxBodyBytes !== undefined) config.maxBodyBytes = opts.maxBodyBytes;
+  if (opts.maxDesignBytes !== undefined) config.maxDesignBytes = opts.maxDesignBytes;
   const db = openDb(dataDir);
   const app = buildApp({ config, db, postLimit: opts.postLimit ?? 20 });
   return { app, config, db, cleanup: () => { db.close(); rmSync(dataDir, { recursive: true, force: true }); } };
@@ -121,6 +124,25 @@ test('invalid payloads are rejected with a clear error, never stored silently', 
   }
 });
 
+test('oversized multipart without Content-Length is rejected before storage', async (t) => {
+  const { app, db, cleanup } = makeApp({ maxBodyBytes: 256 });
+  t.after(cleanup);
+  const form = designForm(payload());
+  form.append('unused', 'x'.repeat(1024));
+  const res = await app.request('/v1/designs', { method: 'POST', body: form });
+  assert.equal(res.status, 413);
+  assert.equal((await res.json() as { error: string }).error, 'too_large');
+  assert.deepEqual(db.prepare('SELECT id FROM designs').all(), []);
+});
+
+test('the JSON design limit counts UTF-8 bytes rather than characters', async (t) => {
+  const design = JSON.stringify(payload({ note: '📷'.repeat(32) }));
+  const { app, cleanup } = makeApp({ maxDesignBytes: design.length + 1 });
+  t.after(cleanup);
+  const res = await app.request('/v1/designs', { method: 'POST', body: designForm(design) });
+  assert.equal(res.status, 413);
+});
+
 test('gif upload is stored and served with the gif content type', async () => {
   const { app, cleanup } = makeApp();
   try {
@@ -166,6 +188,24 @@ test('og.png renders the strip for builtin SVG frames and custom data-URL frames
   } finally {
     cleanup();
   }
+});
+
+test('OG previews contain the built-in frame overlay at export-scaled dimensions', async (t) => {
+  const { app, cleanup } = makeApp();
+  t.after(cleanup);
+  const res = await app.request('/v1/designs', {
+    method: 'POST', body: designForm(payload({ f: '/frames/polaroid-16x9.svg' })),
+  });
+  assert.equal(res.status, 201);
+  const { id } = await res.json() as { id: string };
+  const og = await app.request(`/v1/designs/${id}/og.png`);
+  assert.equal(og.status, 200);
+  const image = await loadImage(Buffer.from(await og.arrayBuffer()));
+  assert.equal(image.width, 1080);
+  assert.equal(image.height, 608);
+  const ctx = createCanvas(image.width, image.height).getContext('2d');
+  ctx.drawImage(image, 0, 0);
+  assert.deepEqual(Array.from(ctx.getImageData(2, 2, 1, 1).data), [250, 249, 246, 255]);
 });
 
 test('expired designs answer 410 and expireDesigns removes rows and blobs', async (t) => {
