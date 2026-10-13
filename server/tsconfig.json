@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmitOnError": true,
+    "rootDir": "..",
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "lz-string": ["node_modules/lz-string"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "../lib/types.ts",
+    "../lib/layout.ts",
+    "../lib/frames.ts",
+    "../lib/state.ts"
+  ]
+}

@@ -4,22 +4,32 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BoothState, FrameRatio, GridCount, PhotoSlot } from '../lib/types';
 import { clearDraft, defaultState, hasPhotos, loadDraft, saveDraft, visibleSlots } from '../lib/state';
 import { renderBoothBlob } from '../lib/render';
+import { renderBoothGifBlob } from '../lib/gif';
 import { downloadBlob, fileToFrame, fileToPhotoDataURL } from '../lib/image';
-import { boothLayout, clamp, MAX_ZOOM, MIN_ZOOM } from '../lib/layout';
+import { addFrameToLibrary, loadFrameLibrary, removeFrameFromLibrary, type SavedFrame } from '../lib/frameLibrary';
+import {
+  addCommunityFrame,
+  communityEnabled,
+  communityFrameDataURL,
+  deleteCommunityFrame,
+  listCommunityFrames,
+  type CommunityFrame,
+} from '../lib/communityFrames';
+import { boothLayout, clamp, photoInset, MAX_ZOOM, MIN_ZOOM } from '../lib/layout';
+import { downloadTemplateGuide, downloadTemplatePNG } from '../lib/template';
+import LayoutChoices from '../components/LayoutChoices';
 import { findBuiltinFrame, frameVariant, framesForRatio, isBuiltinFrame } from '../lib/frames';
 import { shareProvider, type ShareLink } from '../lib/share';
 import PhotoSlotView from '../components/PhotoSlotView';
 import CameraModal from '../components/CameraModal';
+import { mergeCapturedSlots } from '../components/camera/session';
 import ShareModal from '../components/ShareModal';
 import { Toast, useToast } from '../components/useToast';
 import {
   CameraIcon,
   CheckIcon,
   DownloadIcon,
-  GridIcon,
   ImageIcon,
-  LandscapeIcon,
-  PortraitIcon,
   ResetIcon,
   ShareIcon,
   UploadIcon,
@@ -31,14 +41,26 @@ import {
 export default function Home() {
   const [state, setState] = useState<BoothState>(() => defaultState(3));
   const [hydrated, setHydrated] = useState(false);
+  const [draftSaved, setDraftSaved] = useState<boolean | null>(null);
   const [activeSlot, setActiveSlot] = useState(0);
-  const [captureTarget, setCaptureTarget] = useState<number | null>(null);
+  const [captureTargets, setCaptureTargets] = useState<number[] | null>(null);
+  const [showFrame, setShowFrame] = useState(true);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [frameLibrary, setFrameLibrary] = useState<SavedFrame[]>([]);
+  const [communityFrames, setCommunityFrames] = useState<CommunityFrame[]>([]);
+  const [frameCode, setFrameCode] = useState('');
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<ShareLink | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
-  const [busy, setBusy] = useState<'download' | 'share' | null>(null);
+  const [busy, setBusy] = useState<'download' | 'share' | 'gif' | null>(null);
   const { toast, show } = useToast();
   const frameInputRef = useRef<HTMLInputElement>(null);
+  const currentState = useRef(state);
+  currentState.current = state;
+  const photoRequests = useRef([0, 0, 0, 0]);
+  const frameRequest = useRef(0);
+  const communitySources = useRef(new Map<string, string>());
+  const shareRequest = useRef(0);
 
   // Load: shared link first, then local draft.
   useEffect(() => {
@@ -58,6 +80,7 @@ export default function Home() {
           if (hasPhotos(draft)) show('Draft terakhir dipulihkan', 'info');
         }
       }
+      setFrameLibrary(loadFrameLibrary());
       setHydrated(true);
     })();
     return () => {
@@ -65,10 +88,27 @@ export default function Home() {
     };
   }, [show]);
 
+  // Community frames are served by the booth API and shared by every visitor.
+  useEffect(() => {
+    if (!communityEnabled()) return;
+    let cancelled = false;
+    listCommunityFrames(state.frameRatio)
+      .then((frames) => {
+        if (!cancelled) setCommunityFrames(frames);
+      })
+      .catch(() => {
+        if (!cancelled) setCommunityFrames([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.frameRatio]);
+
   // Autosave draft (debounced).
   useEffect(() => {
     if (!hydrated) return;
-    const t = setTimeout(() => saveDraft(state), 400);
+    setDraftSaved(null);
+    const t = setTimeout(() => setDraftSaved(saveDraft(state)), 400);
     return () => clearTimeout(t);
   }, [state, hydrated]);
 
@@ -77,6 +117,10 @@ export default function Home() {
   const filled = slots.filter((s) => s.src).length;
   const activePhoto = slots[activeSlot] as PhotoSlot | undefined;
   const customFrame = !!state.frameSrc && !isBuiltinFrame(state.frameSrc);
+  const libraryFrames = useMemo(
+    () => frameLibrary.filter((f) => f.ratio === state.frameRatio),
+    [frameLibrary, state.frameRatio],
+  );
 
   // Preview scale: measure the preview box to convert export px → screen px.
   const previewRef = useRef<HTMLDivElement>(null);
@@ -99,6 +143,7 @@ export default function Home() {
 
   const setPhoto = useCallback(
     (index: number, src: string | null) => {
+      photoRequests.current[index]++;
       updateSlot(index, { src, zoom: 1, ox: 0, oy: 0 });
       setActiveSlot(index);
     },
@@ -106,31 +151,40 @@ export default function Home() {
   );
 
   const setGrid = useCallback((grid: GridCount) => {
-    setState((s) => ({ ...s, grid }));
+    setState((s) => ({ ...s, grid, layoutVersion: 2 }));
     setActiveSlot((a) => Math.min(a, grid - 1));
   }, []);
 
   const setRatio = useCallback((ratio: FrameRatio) => {
+    frameRequest.current++;
     setState((s) => {
       if (s.frameRatio === ratio) return s;
       const variant = frameVariant(s.frameSrc, ratio);
-      return { ...s, frameRatio: ratio, frameSrc: variant ? variant.src : s.frameSrc };
+      const grid = ratio !== '16:9' && s.grid === 4 ? 3 : s.grid;
+      return { ...s, grid, layoutVersion: 2, frameRatio: ratio, frameSrc: variant ? variant.src : null,
+        frameInset: undefined, frameGrid: undefined };
     });
+    setActiveSlot(0);
   }, []);
 
   const chooseFrame = useCallback((src: string | null) => {
+    frameRequest.current++;
     setState((s) => {
       const builtin = findBuiltinFrame(src);
-      return { ...s, frameSrc: src, frameRatio: builtin ? builtin.ratio : s.frameRatio };
+      return { ...s, frameSrc: src, frameRatio: builtin ? builtin.ratio : s.frameRatio,
+        frameInset: undefined, frameGrid: undefined };
     });
   }, []);
 
   const uploadPhoto = useCallback(
     async (index: number, file: File) => {
+      const request = ++photoRequests.current[index];
       try {
         const src = await fileToPhotoDataURL(file);
+        if (photoRequests.current[index] !== request) return;
         setPhoto(index, src);
       } catch (e) {
+        if (photoRequests.current[index] !== request) return;
         show((e as Error).message || 'Gagal memproses gambar', 'error');
       }
     },
@@ -156,7 +210,16 @@ export default function Home() {
     return i >= 0 ? i : activeSlot;
   };
 
+  const openSession = () => {
+    const empty = slots.flatMap((slot, i) => slot.src ? [] : [i]);
+    setCaptureTargets(empty.length ? empty : slots.map((_, i) => i));
+  };
+
   const moveSlot = useCallback((index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= currentState.current.grid) return;
+    photoRequests.current[index]++;
+    photoRequests.current[target]++;
     setState((s) => {
       const j = index + dir;
       if (j < 0 || j >= s.grid) return s;
@@ -172,19 +235,134 @@ export default function Home() {
       const file = e.target.files?.[0];
       e.target.value = '';
       if (!file) return;
+      const request = ++frameRequest.current;
+      const original = currentState.current;
       try {
-        const { src, ratio } = await fileToFrame(file);
-        setState((s) => ({ ...s, frameSrc: src, frameRatio: ratio }));
-        show(`Frame custom diterapkan (${ratio})`, 'success');
+        const size = boothLayout(original);
+        const { src, ratio, inset, windowCount } = await fileToFrame(file, original.frameRatio);
+        if (frameRequest.current !== request) return;
+        if (currentState.current !== original) throw new Error('Desain berubah. Pilih ulang frame untuk layout terbaru.');
+        // The uploaded PNG's own transparent windows drive the layout —
+        // not whichever base frame happened to be selected (docs/TEMPLATES.md).
+        const detectedGrid =
+          windowCount >= 1 && windowCount <= 4 && windowCount !== original.grid && !(ratio !== '16:9' && windowCount === 4)
+            ? (windowCount as GridCount)
+            : null;
+        const grid = detectedGrid ?? original.grid;
+        setState((s) => ({
+          ...s,
+          frameSrc: src,
+          frameRatio: ratio,
+          grid,
+          frameGrid: grid,
+          layoutVersion: 2,
+          frameInset: inset ?? photoInset(original, size.w, size.h),
+        }));
+        setActiveSlot((a) => Math.min(a, grid - 1));
+        const name = file.name.replace(/\.png$/i, '').slice(0, 40) || 'Frame';
+        const { frames, saved } = addFrameToLibrary({ name, src, ratio, grid, inset });
+        setFrameLibrary(frames);
+        if (communityEnabled() && frameCode.trim()) {
+          try {
+            await addCommunityFrame({ name, code: frameCode.trim(), dataUrl: src });
+            setCommunityFrames(await listCommunityFrames(ratio));
+            show('Frame ditambahkan ke koleksi komunitas', 'success');
+          } catch (err) {
+            show(`${(err as Error).message} ${saved ? 'Frame tetap tersimpan di perangkat ini.' : 'Frame diterapkan, tetapi penyimpanan perangkat penuh.'}`, 'info');
+          }
+        } else if (communityEnabled()) {
+          show(`${saved ? 'Frame tersimpan di perangkat ini.' : 'Frame diterapkan, tetapi penyimpanan perangkat penuh.'} Isi kode akses untuk menambahkannya ke koleksi komunitas.`, 'info');
+        } else {
+          const detail = [
+            inset ? 'jendela foto diukur otomatis' : 'frame diterapkan',
+            detectedGrid ? `· frame ini untuk ${detectedGrid} foto` : '',
+            saved ? '· tersimpan ke koleksi' : '· penyimpanan penuh, frame belum tersimpan',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          show(detail, saved ? 'success' : 'info');
+        }
       } catch (err) {
+        if (frameRequest.current !== request) return;
         show((err as Error).message || 'Gagal memuat frame', 'error');
       }
+    },
+    [show, frameCode],
+  );
+
+  const applySavedFrame = useCallback((frame: SavedFrame) => {
+    frameRequest.current++;
+    setState((s) => {
+      if (frame.ratio !== s.frameRatio) return s;
+      return {
+        ...s,
+        frameSrc: frame.src,
+        frameRatio: frame.ratio,
+        grid: frame.grid,
+        frameGrid: frame.grid,
+        frameInset: frame.inset ?? undefined,
+        layoutVersion: 2,
+      };
+    });
+    setActiveSlot((a) => Math.min(a, frame.grid - 1));
+  }, []);
+
+  const removeSavedFrame = useCallback(
+    (id: string) => {
+      setFrameLibrary(removeFrameFromLibrary(id));
+      show('Frame dihapus dari koleksi perangkat ini', 'info');
     },
     [show],
   );
 
+  const applyCommunityFrame = useCallback(async (frame: CommunityFrame) => {
+    const request = ++frameRequest.current;
+    try {
+      const src = communitySources.current.get(frame.id) ?? await communityFrameDataURL(frame);
+      if (frameRequest.current !== request || currentState.current.frameRatio !== frame.ratio) return;
+      communitySources.current.set(frame.id, src);
+      setState((s) => {
+        if (frame.ratio !== s.frameRatio) return s;
+        return {
+          ...s,
+          frameSrc: src,
+          frameRatio: frame.ratio,
+          grid: frame.grid,
+          frameGrid: frame.grid,
+          frameInset: frame.inset ?? undefined,
+          layoutVersion: 2,
+        };
+      });
+      setActiveSlot((a) => Math.min(a, frame.grid - 1));
+    } catch (err) {
+      if (frameRequest.current === request) show((err as Error).message, 'error');
+    }
+  }, [show]);
+
+  const removeCommunityFrame = useCallback(
+    async (frame: CommunityFrame) => {
+      const code = frameCode.trim();
+      if (!code) {
+        show('Isi kode akses dulu untuk menghapus frame komunitas.', 'info');
+        return;
+      }
+      try {
+        await deleteCommunityFrame(frame.id, code);
+        setCommunityFrames((list) => list.filter((f) => f.id !== frame.id));
+        // A selected frame is an embedded snapshot and remains usable after deletion.
+        show('Frame dihapus dari koleksi komunitas', 'info');
+      } catch (err) {
+        show((err as Error).message, 'error');
+      }
+    },
+    [frameCode, show],
+  );
+
   const resetAll = useCallback(() => {
-    if (hasPhotos(state) && !window.confirm('Mulai baru? Semua foto akan dihapus.')) return;
+    if (state.slots.some((s) => s.src) && !window.confirm('Mulai baru? Semua foto, termasuk yang tersembunyi, akan dihapus.')) return;
+    photoRequests.current = photoRequests.current.map((request) => request + 1);
+    frameRequest.current++;
+    shareRequest.current++;
     clearDraft();
     setState(defaultState(3));
     setActiveSlot(0);
@@ -226,22 +404,64 @@ export default function Home() {
     }
   }, [state, show]);
 
-  const openShare = useCallback(async () => {
-    setShareOpen(true);
-    setShareLoading(true);
+  const handleDownloadGif = useCallback(async () => {
+    setBusy('gif');
     try {
-      setShareLink(await shareProvider.createLink(state));
-    } catch {
-      show('Gagal membuat link', 'error');
+      const blob = await renderBoothGifBlob(state);
+      downloadBlob(blob, `selfie-booth-${Date.now()}.gif`);
+      show('GIF berhasil diunduh', 'success');
+    } catch (e) {
+      console.error(e);
+      show('Gagal membuat GIF. Coba lagi.', 'error');
     } finally {
-      setShareLoading(false);
+      setBusy(null);
     }
   }, [state, show]);
+
+  const handleShareGif = useCallback(async () => {
+    setBusy('gif');
+    try {
+      const blob = await renderBoothGifBlob(state);
+      const file = new File([blob], 'selfie-booth.gif', { type: 'image/gif' });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Selfie Booth' });
+      } else {
+        downloadBlob(blob, file.name);
+        show('Share file tidak didukung, GIF diunduh', 'info');
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') show('Gagal membagikan GIF', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }, [state, show]);
+
+  const openShare = useCallback(async () => {
+    const request = ++shareRequest.current;
+    setShareOpen(true);
+    setShareLink(null);
+    setShareLoading(true);
+    try {
+      const link = await shareProvider.createLink(state);
+      if (shareRequest.current === request) setShareLink(link);
+    } catch {
+      if (shareRequest.current !== request) return;
+      show('Gagal membuat link', 'error');
+      setShareOpen(false);
+    } finally {
+      if (shareRequest.current === request) setShareLoading(false);
+    }
+  }, [state, show]);
+
+  const closeShare = useCallback(() => {
+    shareRequest.current++;
+    setShareOpen(false);
+  }, []);
 
   // Keyboard: zoom / nudge / delete for the active photo.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (captureTarget !== null || shareOpen) return;
+      if (captureTargets !== null || shareOpen) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
       const slot = slots[activeSlot];
@@ -278,9 +498,9 @@ export default function Home() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [slots, activeSlot, captureTarget, shareOpen, updateSlot, setPhoto]);
+  }, [slots, activeSlot, captureTargets, shareOpen, updateSlot, setPhoto]);
 
-  const portrait = state.frameRatio === '9:16';
+  const portrait = state.frameRatio !== '16:9';
 
   return (
     <main className="glow-bg min-h-screen pb-16">
@@ -297,11 +517,12 @@ export default function Home() {
               <p className="text-[11px] text-ink-600">by tiyoouw.app</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               type="button"
               onClick={resetAll}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-600 hover:bg-white/5 hover:text-cream"
+              aria-label="Mulai baru"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium text-ink-600 hover:bg-white/5 hover:text-cream sm:px-3"
               title="Mulai desain baru"
             >
               <ResetIcon size={16} /> <span className="hidden sm:inline">Mulai baru</span>
@@ -310,7 +531,8 @@ export default function Home() {
               type="button"
               onClick={openShare}
               disabled={filled === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Bagikan"
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2 py-2 text-sm font-medium hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3"
               title={filled === 0 ? 'Tambahkan foto dulu' : 'Bagikan'}
             >
               <ShareIcon size={16} /> <span className="hidden sm:inline">Bagikan</span>
@@ -319,7 +541,8 @@ export default function Home() {
               type="button"
               onClick={handleDownload}
               disabled={busy !== null || filled === 0}
-              className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-ink-950 hover:bg-brand-bright disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Download PNG"
+              className="flex items-center gap-1.5 rounded-lg bg-brand px-2 py-2 text-sm font-semibold text-ink-950 hover:bg-brand-bright disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
               title={filled === 0 ? 'Tambahkan foto dulu' : 'Download PNG'}
             >
               <DownloadIcon size={16} />
@@ -349,10 +572,11 @@ export default function Home() {
 
           <div
             ref={previewRef}
-            className="preview-checker relative mx-auto overflow-hidden rounded-2xl border border-white/10 bg-ink-900 shadow-2xl"
+            data-testid="booth-preview"
+            className="relative mx-auto overflow-hidden rounded-2xl bg-[#0d0d0d] shadow-2xl"
             style={{
-              aspectRatio: portrait ? '9 / 16' : '16 / 9',
-              width: portrait ? 'min(100%, calc(72vh * 9 / 16))' : '100%',
+              aspectRatio: `${layout.w} / ${layout.h}`,
+              width: portrait ? `min(100%, ${72 * layout.w / layout.h}vh)` : '100%',
             }}
           >
             {slots.map((slot, i) => {
@@ -378,7 +602,7 @@ export default function Home() {
                     active={activeSlot === i}
                     onActivate={() => setActiveSlot(i)}
                     onAdjust={(patch) => updateSlot(i, patch)}
-                    onCapture={() => setCaptureTarget(i)}
+                    onCapture={() => setCaptureTargets([i])}
                     onUpload={(file) => uploadPhoto(i, file)}
                     onRemove={() => setPhoto(i, null)}
                     onMove={(dir) => moveSlot(i, dir)}
@@ -387,7 +611,7 @@ export default function Home() {
               );
             })}
 
-            {state.frameSrc && (
+            {state.frameSrc && showFrame && (
               <img
                 src={state.frameSrc}
                 alt=""
@@ -396,6 +620,11 @@ export default function Home() {
               />
             )}
           </div>
+
+          <label className="mt-3 flex items-center justify-center gap-2 text-xs text-ink-600">
+            <input type="checkbox" checked={showFrame} onChange={(e) => setShowFrame(e.target.checked)} className="accent-[#FF7E1D]" />
+            Tampilkan frame · tidak mengubah hasil unduhan
+          </label>
 
           {/* Adjust active photo */}
           <div className="mt-4 rounded-xl border border-white/10 bg-ink-900/60 p-4">
@@ -463,53 +692,7 @@ export default function Home() {
         {/* Controls */}
         <aside className="space-y-4">
           <Panel step={1} title="Layout">
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              {(
-                [
-                  ['16:9', 'Landscape', LandscapeIcon],
-                  ['9:16', 'Portrait', PortraitIcon],
-                ] as const
-              ).map(([ratio, label, Icon]) => (
-                <button
-                  key={ratio}
-                  type="button"
-                  onClick={() => setRatio(ratio)}
-                  disabled={customFrame}
-                  aria-pressed={state.frameRatio === ratio}
-                  title={customFrame ? 'Rasio mengikuti frame custom' : label}
-                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    state.frameRatio === ratio
-                      ? 'border-brand bg-brand/10 text-brand'
-                      : 'border-white/10 text-ink-600 hover:border-white/20 hover:text-cream'
-                  }`}
-                >
-                  <Icon size={18} /> {label}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {([1, 2, 3] as GridCount[]).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setGrid(n)}
-                  aria-pressed={state.grid === n}
-                  className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 transition ${
-                    state.grid === n
-                      ? 'border-brand bg-brand/10 text-brand'
-                      : 'border-white/10 text-ink-600 hover:border-white/20 hover:text-cream'
-                  }`}
-                >
-                  <GridIcon size={22} cols={n} />
-                  <span className="text-xs font-semibold">{n} Foto</span>
-                </button>
-              ))}
-            </div>
-            {customFrame && (
-              <p className="mt-2 text-[11px] text-ink-600">
-                Rasio dikunci ke {state.frameRatio} oleh frame custom. Hapus frame untuk mengubah.
-              </p>
-            )}
+            <LayoutChoices state={state} locked={customFrame} onRatio={setRatio} onCount={setGrid} />
           </Panel>
 
           <Panel step={2} title="Frame">
@@ -537,8 +720,8 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="mt-3">
-              {customFrame ? (
+            <div className="mt-3 space-y-2">
+              {customFrame && (
                 <div className="flex items-center justify-between rounded-lg border border-brand/40 bg-brand/5 p-2">
                   <div className="flex items-center gap-2">
                     <img
@@ -560,22 +743,112 @@ export default function Home() {
                     <XIcon size={16} />
                   </button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => frameInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-ink-600 transition hover:border-brand hover:text-cream"
-                >
-                  <UploadIcon size={15} /> Upload frame PNG transparan (16:9 / 9:16)
-                </button>
               )}
+              <button
+                type="button"
+                onClick={() => frameInputRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-ink-600 transition hover:border-brand hover:text-cream"
+              >
+                <UploadIcon size={15} /> Upload frame PNG · {layout.w}×{layout.h}
+              </button>
               <input
                 ref={frameInputRef}
                 type="file"
                 accept="image/png"
+                aria-label="Upload frame PNG"
                 className="hidden"
                 onChange={handleFrameUpload}
               />
+              {communityEnabled() && (
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold">
+                      Koleksi komunitas · {communityFrames.length} frame · {state.frameRatio}
+                    </p>
+                    <input
+                      type="text"
+                      value={frameCode}
+                      onChange={(e) => setFrameCode(e.target.value)}
+                      placeholder="Kode akses"
+                      aria-label="Kode akses koleksi komunitas"
+                      className="w-28 rounded-md border border-white/15 bg-ink-950 px-2 py-1 text-[11px] text-cream placeholder:text-ink-600 focus:border-brand focus:outline-none"
+                    />
+                  </div>
+                  {communityFrames.length === 0 ? (
+                    <p className="text-[11px] text-ink-600">Belum ada frame komunitas untuk rasio ini.</p>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-2">
+                      {communityFrames.map((f) => (
+                        <div key={f.id} className="group relative">
+                          <FrameChoice
+                            selected={state.frameSrc === f.imageUrl || state.frameSrc === communitySources.current.get(f.id)}
+                            onClick={() => applyCommunityFrame(f)}
+                            label={f.name}
+                            ratio={f.ratio}
+                          >
+                            <img src={f.imageUrl} alt="" className="h-full w-full object-contain" />
+                          </FrameChoice>
+                          <button
+                            type="button"
+                            onClick={() => removeCommunityFrame(f)}
+                            aria-label={`Hapus ${f.name} dari koleksi komunitas`}
+                            title="Hapus dari koleksi komunitas"
+                            className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                          >
+                            <XIcon size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-2 text-[11px] text-ink-600">
+                    Terlihat oleh semua pengguna. Isi kode akses di atas sebelum upload untuk menambah frame ke koleksi ini.
+                  </p>
+                </div>
+              )}
+              {libraryFrames.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold">
+                    Koleksi perangkat ini · {libraryFrames.length} frame · {state.frameRatio}
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {libraryFrames.map((f) => (
+                      <div key={f.id} className="group relative">
+                        <FrameChoice
+                          selected={state.frameSrc === f.src}
+                          onClick={() => applySavedFrame(f)}
+                          label={f.name}
+                          ratio={f.ratio}
+                        >
+                          <img src={f.src} alt="" className="h-full w-full object-contain" />
+                        </FrameChoice>
+                        <button
+                          type="button"
+                          onClick={() => removeSavedFrame(f.id)}
+                          aria-label={`Hapus ${f.name} dari koleksi`}
+                          title={`Hapus ${f.name} dari koleksi`}
+                          className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                        >
+                          <XIcon size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 border-t border-white/10 pt-3">
+              <p className="mb-2 text-xs font-semibold">Buat frame sendiri · {state.grid} foto</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => downloadTemplateGuide(state)} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/20">Unduh panduan SVG</button>
+                <button type="button" disabled={templateBusy} onClick={async () => {
+                  setTemplateBusy(true);
+                  try { await downloadTemplatePNG(state); }
+                  catch { show('Gagal membuat template PNG', 'error'); }
+                  finally { setTemplateBusy(false); }
+                }} className="rounded-lg bg-white/10 px-2 py-2 text-xs hover:bg-white/20 disabled:opacity-40">{templateBusy ? 'Menyiapkan…' : 'Unduh template PNG'}</button>
+              </div>
+              <p className="mt-2 text-[11px] text-ink-600">Panduan berisi koordinat, ukuran jendela foto, dan area aman. Edit PNG tanpa mengubah ukuran atau jendela transparan — saat upload, jendela transparan diukur otomatis dan foto menyesuaikan posisinya. Ukuran jendela mengikuti frame dasar yang sedang dipilih — pilih dulu frame dasarnya (mis. Polaroid) bila ingin margin seperti itu.</p>
             </div>
           </Panel>
 
@@ -596,10 +869,10 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setCaptureTarget(firstEmptyOrActive())}
+                onClick={openSession}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-brand py-2.5 text-sm font-semibold text-ink-950 hover:bg-brand-bright"
               >
-                <CameraIcon size={16} /> Kamera
+                <CameraIcon size={16} /> Buka kamera
               </button>
               <button
                 type="button"
@@ -611,8 +884,8 @@ export default function Home() {
             </div>
             <p className="mt-2 text-[11px] text-ink-600">
               {filled < state.grid
-                ? `Mengisi kotak ${firstEmptyOrActive() + 1}. Foto otomatis dikecilkan agar ringan.`
-                : `Semua kotak terisi — tombol di atas mengganti foto ${activeSlot + 1}.`}
+                ? `Satu Mulai untuk ${state.grid - filled} foto kosong. Foto yang sudah ada tetap disimpan.`
+                : 'Kamera memulai sesi baru; foto lama baru diganti setelah Pakai semua. Upload mengganti foto yang dipilih.'}
             </p>
           </Panel>
 
@@ -637,7 +910,7 @@ export default function Home() {
             </div>
             <p className="mt-2 flex items-start gap-1.5 text-[11px] text-ink-600">
               <ImageIcon size={13} className="mt-0.5 shrink-0" />
-              Hasil {layout.w}×{layout.h}px, persis seperti preview. Draft tersimpan otomatis di browser ini.
+              Hasil {layout.w}×{layout.h}px. {draftSaved === true ? 'Draft tersimpan di browser ini.' : draftSaved === false ? 'Draft tidak tersimpan: penyimpanan browser penuh atau tidak tersedia. Unduh hasil agar aman.' : 'Menyimpan draft…'}
             </p>
           </Panel>
         </aside>
@@ -645,13 +918,17 @@ export default function Home() {
 
       <Toast toast={toast} />
 
-      {captureTarget !== null && (
+      {captureTargets !== null && (
         <CameraModal
-          slotIndex={captureTarget}
-          onClose={() => setCaptureTarget(null)}
-          onCapture={(dataUrl) => {
-            setPhoto(captureTarget, dataUrl);
-            setCaptureTarget(null);
+          state={state}
+          targets={captureTargets}
+          onClose={() => setCaptureTargets(null)}
+          onConfirm={(photos, capturedIndices) => {
+            capturedIndices.forEach((index) => photoRequests.current[index]++);
+            setState((s) => ({ ...s, slots: mergeCapturedSlots(s.slots, photos, capturedIndices) }));
+            setActiveSlot(captureTargets[0]);
+            setCaptureTargets(null);
+            show('Foto sesi diterapkan', 'success');
           }}
         />
       )}
@@ -663,8 +940,16 @@ export default function Home() {
           canShareImage={canShareFiles}
           onShareImage={handleShareImage}
           onDownload={handleDownload}
-          onClose={() => setShareOpen(false)}
+          onDownloadGif={handleDownloadGif}
+          onShareGif={handleShareGif}
+          gifBusy={busy === 'gif'}
+          gifEnabled={filled > 0}
+          onClose={closeShare}
           onCopied={(ok) => show(ok ? 'Link tersalin' : 'Gagal menyalin, salin manual', ok ? 'success' : 'error')}
+          onDeleted={(ok) => {
+            show(ok ? 'Link dihapus dari server' : 'Gagal menghapus link', ok ? 'success' : 'error');
+            if (ok) setShareLink(null);
+          }}
         />
       )}
     </main>
@@ -709,7 +994,7 @@ function FrameChoice({
     >
       <div
         className="preview-checker w-full overflow-hidden rounded bg-ink-800"
-        style={{ aspectRatio: ratio === '9:16' ? '9 / 16' : '16 / 9', maxHeight: 56 }}
+        style={{ aspectRatio: ratio.replace(':', ' / '), height: 56, width: 'auto', maxWidth: '100%' }}
       >
         {children}
       </div>

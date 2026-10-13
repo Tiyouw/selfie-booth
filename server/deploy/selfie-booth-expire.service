@@ -1,0 +1,14 @@
+[Unit]
+Description=Selfie Booth daily TTL cleanup
+
+[Service]
+Type=oneshot
+User=selfie-booth
+WorkingDirectory=/opt/selfie-booth/server
+EnvironmentFile=/etc/selfie-booth/api.env
+ExecStart=/usr/bin/node dist/server/src/expire.js
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/selfie-booth
+PrivateTmp=true

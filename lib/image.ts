@@ -1,5 +1,7 @@
-import type { FrameRatio } from './types';
+import type { FrameRatio, Inset } from './types';
 import { loadImage } from './render';
+import { exportSize } from './layout';
+import { detectTransparentWindows, insetFromWindows } from './frameGeom';
 
 /** Working-copy photo size: enough for a full-quality 1920×1080 export. */
 export const PHOTO_MAX_DIM = 1280;
@@ -9,7 +11,11 @@ export const PHOTO_QUALITY = 0.86;
 export const FRAME_MAX_DIM = 1920;
 
 export function detectFrameRatio(img: { width: number; height: number }): FrameRatio {
-  return img.width / img.height >= 1.2 ? '16:9' : '9:16';
+  for (const ratio of ['16:9', '9:16', '1:3'] as FrameRatio[]) {
+    const size = exportSize(ratio);
+    if (Math.abs(img.width / img.height - size.w / size.h) < 0.002) return ratio;
+  }
+  throw new Error('Rasio frame harus 16:9, 9:16, atau 1:3. Gunakan template yang tersedia.');
 }
 
 export function fileToDataURL(file: File): Promise<string> {
@@ -61,11 +67,50 @@ export async function fileToPhotoDataURL(file: File): Promise<string> {
   return resizeImage(img, PHOTO_MAX_DIM, 'image/jpeg', PHOTO_QUALITY);
 }
 
-/** Frame upload → PNG dataURL (keeps transparency) + detected ratio. */
-export async function fileToFrame(file: File): Promise<{ src: string; ratio: FrameRatio }> {
-  if (file.type !== 'image/png') throw new Error('Frame harus berupa PNG transparan');
+/** Frame upload → PNG dataURL (keeps transparency) + detected ratio and geometry. */
+export interface PreparedFrame {
+  src: string;
+  ratio: FrameRatio;
+  /** Window geometry measured from the PNG's transparent pixels, if sizable windows exist. */
+  inset: Inset | null;
+  /** How many photo windows were detected (grid hint). */
+  windowCount: number;
+}
+
+export async function fileToFrame(file: File, expectedRatio?: FrameRatio): Promise<PreparedFrame> {
+  if (!file.type.startsWith('image/png')) throw new Error('Frame harus berupa PNG transparan');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Frame maksimal 10 MB');
   const img = await loadImage(await fileToDataURL(file));
-  return { src: resizeImage(img, FRAME_MAX_DIM, 'image/png'), ratio: detectFrameRatio(img) };
+  const ratio = detectFrameRatio(img);
+  const size = exportSize(expectedRatio ?? ratio);
+  if (ratio !== (expectedRatio ?? ratio) || img.naturalWidth !== size.w || img.naturalHeight !== size.h) {
+    throw new Error(`Frame harus ${size.w}×${size.h}px untuk layout ini. Unduh template terlebih dahulu.`);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = size.w;
+  canvas.height = size.h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas tidak tersedia');
+  ctx.drawImage(img, 0, 0);
+  const pixels = ctx.getImageData(0, 0, size.w, size.h).data;
+  let transparent = false;
+  for (let i = 3; i < pixels.length; i += 4) {
+    if (pixels[i] === 0) { transparent = true; break; }
+  }
+  if (!transparent) throw new Error('Frame tidak memiliki jendela transparan. Jangan upload gambar panduan.');
+  // Measure the actual photo windows so the layout follows the PNG, not the
+  // previously selected base frame (docs/TEMPLATES.md).
+  const windows = detectTransparentWindows(pixels, size.w, size.h);
+  const maxGrid = ratio === '16:9' ? 4 : 3;
+  if (windows.length < 1 || windows.length > maxGrid) {
+    throw new Error(`Frame harus memiliki 1–${maxGrid} jendela foto transparan yang jelas.`);
+  }
+  return {
+    src: canvas.toDataURL('image/png'),
+    ratio,
+    inset: insetFromWindows(windows, size.w, size.h),
+    windowCount: windows.length,
+  };
 }
 
 export function dataURLtoBlob(dataURL: string): Blob {

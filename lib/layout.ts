@@ -3,6 +3,7 @@ import { findBuiltinFrame } from './frames';
 
 /** Native export size. Photos are stored at ≤1280px so 1× is already full quality. */
 export function exportSize(ratio: FrameRatio): { w: number; h: number } {
+  if (ratio === '1:3') return { w: 640, h: 1920 };
   return ratio === '9:16' ? { w: 1080, h: 1920 } : { w: 1920, h: 1080 };
 }
 
@@ -13,6 +14,7 @@ export function gridGap(w: number, h: number): number {
 
 /** Area the photos are laid out in: the frame's transparent window or the default padding. */
 export function photoInset(state: BoothState, w: number, h: number): Inset {
+  if (state.frameInset) return state.frameInset;
   const builtin = findBuiltinFrame(state.frameSrc);
   if (builtin) return builtin.inset;
   const g = gridGap(w, h);
@@ -27,6 +29,7 @@ export function gridLayout(
   inset: Inset,
   gap: number,
   isPortrait: boolean,
+  layoutVersion: 1 | 2 = 2,
 ): Rect[] {
   const x0 = inset.left;
   const y0 = inset.top;
@@ -40,11 +43,8 @@ export function gridLayout(
   }
 
   if (isPortrait) {
-    if (grid === 2) {
-      const cellH = (innerH - gap) / 2;
-      cells.push({ x: x0, y: y0, w: innerW, h: cellH });
-      cells.push({ x: x0, y: y0 + cellH + gap, w: innerW, h: cellH });
-    } else {
+    if (grid === 4) throw new RangeError('Four photos require a landscape frame');
+    if (grid === 3 && layoutVersion === 1) {
       // top photo spans the width; two below it
       const topH = (innerH - gap) * 0.55;
       const bottomH = innerH - topH - gap;
@@ -52,6 +52,11 @@ export function gridLayout(
       cells.push({ x: x0, y: y0, w: innerW, h: topH });
       cells.push({ x: x0, y: y0 + topH + gap, w: cellW, h: bottomH });
       cells.push({ x: x0 + cellW + gap, y: y0 + topH + gap, w: cellW, h: bottomH });
+    } else {
+      const cellH = (innerH - gap * (grid - 1)) / grid;
+      for (let row = 0; row < grid; row++) {
+        cells.push({ x: x0, y: y0 + row * (cellH + gap), w: innerW, h: cellH });
+      }
     }
     return cells;
   }
@@ -60,12 +65,19 @@ export function gridLayout(
   if (grid === 2) {
     cells.push({ x: x0, y: y0, w: cellW, h: innerH });
     cells.push({ x: x0 + cellW + gap, y: y0, w: cellW, h: innerH });
-  } else {
+  } else if (grid === 3) {
     // left photo spans the height; two stacked on the right
     const cellH = (innerH - gap) / 2;
     cells.push({ x: x0, y: y0, w: cellW, h: innerH });
     cells.push({ x: x0 + cellW + gap, y: y0, w: cellW, h: cellH });
     cells.push({ x: x0 + cellW + gap, y: y0 + cellH + gap, w: cellW, h: cellH });
+  } else {
+    const cellH = (innerH - gap) / 2;
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 2; col++) {
+        cells.push({ x: x0 + col * (cellW + gap), y: y0 + row * (cellH + gap), w: cellW, h: cellH });
+      }
+    }
   }
   return cells;
 }
@@ -74,7 +86,7 @@ export function gridLayout(
 export function boothLayout(state: BoothState): { w: number; h: number; cells: Rect[] } {
   const { w, h } = exportSize(state.frameRatio);
   const inset = photoInset(state, w, h);
-  const cells = gridLayout(state.grid, w, h, inset, gridGap(w, h), state.frameRatio === '9:16');
+  const cells = gridLayout(state.grid, w, h, inset, gridGap(w, h), w < h, state.layoutVersion ?? 1);
   return { w, h, cells };
 }
 

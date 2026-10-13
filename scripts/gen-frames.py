@@ -60,6 +60,35 @@ def neon(W, H):
 '''
 
 
+def strip(style):
+    W, H = 640, 1920
+    top, side, bottom, bg, ink = {
+        'klasik': (180, 24, 180, '#0d0d0d', '#faf9f6'),
+        'polaroid': (144, 28, 240, '#faf9f6', '#1a1a1a'),
+        'neon': (176, 32, 176, '#07070a', '#faf9f6'),
+    }[style]
+    ty = H - bottom / 2
+    decoration = ''
+    if style != 'polaroid':
+        decoration = f'''<rect x="{side - 5}" y="{top - 5}" width="{W - side * 2 + 10}" height="{H - top - bottom + 10}" rx="20" fill="none" stroke="url(#g)" stroke-width="4"/>
+<path d="M224 {ty + 32}H416" stroke="url(#g)" stroke-width="3"/>'''
+    if style == 'neon':
+        decoration += f'''<rect x="12" y="28" width="616" height="1864" rx="30" fill="none" stroke="url(#g)" stroke-opacity="0.45" stroke-width="2"/>
+<path d="M250 124H390" stroke="url(#g)" stroke-width="4"/>'''
+    if style == 'polaroid':
+        decoration = f'''<circle cx="140" cy="{ty}" r="5" fill="#FF7E1D"/>
+<circle cx="500" cy="{ty}" r="5" fill="#1C64F2"/>
+<text x="320" y="{ty + 42}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#666666" letter-spacing="3">KEEP THE MOMENT</text>'''
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="640" height="1920" viewBox="0 0 640 1920">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8E3A"/><stop offset="0.5" stop-color="#FF6D00"/><stop offset="1" stop-color="#1C64F2"/></linearGradient></defs>
+<path fill="{bg}" fill-rule="evenodd" d="{window(W, H, top, side, bottom, side, 14)}"/>
+{decoration}
+<text x="320" y="{top / 2 + 10}" text-anchor="middle" font-family="Poppins, Helvetica, Arial, sans-serif" font-weight="700" font-size="34" fill="{ink}" letter-spacing="3">SELFIE BOOTH</text>
+<text x="320" y="{ty + 7}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="{ink}" letter-spacing="4">GOOD TIMES</text>
+</svg>
+'''
+
+
 FRAMES = {
     'klasik-16x9.svg': klasik(1920, 1080),
     'klasik-9x16.svg': klasik(1080, 1920),
@@ -67,6 +96,9 @@ FRAMES = {
     'polaroid-9x16.svg': polaroid(1080, 1920, 210),
     'neon-16x9.svg': neon(1920, 1080),
     'neon-9x16.svg': neon(1080, 1920),
+    'klasik-1x3.svg': strip('klasik'),
+    'polaroid-1x3.svg': strip('polaroid'),
+    'neon-1x3.svg': strip('neon'),
 }
 
 if __name__ == '__main__':
