@@ -1,6 +1,6 @@
 # End-to-end findings
 
-Reviewed and tested on 2026-10-13. Changes are in the working tree; this is a record of local validation, not a production deployment or remote CI result.
+Initial functional review and local validation: 2026-10-13. Dependency and production release verification followed on 2026-10-14; see the sections below for their separate evidence and limits.
 
 ## Fixed
 
@@ -23,7 +23,7 @@ Reviewed and tested on 2026-10-13. Changes are in the working tree; this is a re
 
 Added `npm run test:e2e`, its Playwright development dependency, an isolated server/database runner, and a browser CI job. The runner checks ports before startup, applies case deadlines, fails on zero selected cases, records results/screenshots/logs, and stops its own processes and removes temporary data.
 
-## Validation
+## Initial local validation — 2026-10-13
 
 - 15 Chromium browser scenarios: uploads/editing/reorder/deletion, hidden photos and drafts, PNG/GIF downloads, templates and custom library, community persistence/deletion, rendered server artwork, viewers/QR/share deletion/fallback, small-screen layouts/focus, invalid frames, quota failure, upload/share races, camera permission denial, capture/pause/retake/confirmation, and multi-photo capture preserving existing slots.
 - 88 frontend/core/camera tests and 17 API tests passed.
@@ -50,11 +50,21 @@ Follow-up validation on Windows with Node 22.16.0 / npm 10.9.2:
 - Clean frontend `npm ci` completed with zero audit findings; manifest/lockfile consistency and `git diff --check` passed.
 - 88 frontend/core/camera tests, 17 API tests, both type checks, and the Next.js 16 production build passed.
 - All 15 Chromium scenarios passed after the draft-restoration fix. Production `next start` smoke checks returned 200 for the editor and 404 for an invalid viewer ID.
-- Standard API `npm ci` attempted a native SQLite rebuild and failed because Visual Studio C++ build tools are absent on this machine. For this local validation, `npm --prefix server ci --ignore-scripts` succeeded; the packaged SQLite binary was verified with an in-memory query, then API and browser tests passed. This workaround was used only locally; normal API installation and remote CI were not verified on another environment.
+- Standard API `npm ci` attempted a native SQLite rebuild and failed because Visual Studio C++ build tools are absent on this machine. For this local validation, `npm --prefix server ci --ignore-scripts` succeeded; the packaged SQLite binary was verified with an in-memory query, then API and browser tests passed. This workaround was used only locally. Normal API `npm ci` subsequently passed in Linux CI as recorded below.
+
+## Production release verification — 2026-10-14
+
+- Committed and pushed the upgrade as `ce60ea6` to `main`. Vercel reported successful production deployment for that exact commit: [deployment](https://vercel.com/tiyouws-projects/selfie-booth/4L7gnEUk7nLRUj4Zbf3hTv6xTJqG), serving [selfie.tiyoouw.app](https://selfie.tiyoouw.app).
+- [GitHub CI run 38481285443](https://github.com/Tiyouw/selfie-booth/actions/runs/38481285443) passed all three jobs: frontend checks/build/audit, API checks/audit, and 15 Chromium scenarios. Both standard dependency installations passed on Linux; 88 frontend tests and 17 API tests passed.
+- `npm run test:deployed` passed five check groups against the production frontend and API: health/frame listing/CORS/invalid payloads; upload/edit/draft restoration and landscape/strip PNG exports; short links/GIF/viewer/OG/QR; mobile share layout/delete-token protection/deletion; and hash fallback with the API deliberately blocked only in the test browser. OG pixel checks confirmed both the synthetic photo and the built-in Polaroid border.
+- A separate mobile Chromium check on the production HTTPS origin passed simulated camera capture, retake, confirmation, and draft persistence without browser exceptions. This remains simulated camera evidence, not physical-device validation.
+- Direct SSH inspection confirmed the running API uses clean release `5f8d012` at `/opt/selfie-booth-releases/pr10/server`, Node **22.23.2**, and a lockfile with **0 audit findings**. Its API/shared-library code is unchanged by `ce60ea6`, so no backend redeployment or service restart was needed.
+- The API service was active/running with zero automatic restarts. The daily expiry timer was active and its last service result was successful (exit 0); both API and expiry service use the same release directory.
+- Temporary designs created by deployment checks were removed; existing user designs and community frames were not modified. Reports and the mobile screenshot are under `.hoplite/artifacts/deployed/`.
 
 ## Remaining device validation and deployment limits
 
-Browser checks use headless Chromium and its simulated video device. Physical camera hardware, real permission prompts, audio output, mobile Web Share, real QR scanning/WhatsApp previews, and other browser engines require device/browser validation. Production deployment state was not checked or modified.
+Browser checks use headless Chromium and its simulated video device. Physical camera hardware, real permission prompts, audio output, mobile Web Share, real QR scanning/WhatsApp previews, and other browser engines still require device/browser validation. The production frontend and running API were checked as recorded above; this is not a comprehensive infrastructure security audit.
 
 | Validation still required | Acceptance check |
 | --- | --- |
@@ -64,4 +74,4 @@ Browser checks use headless Chromium and its simulated video device. Physical ca
 | QR and WhatsApp | Scan a short-link QR with another device and send a production-accessible link to verify the actual OG preview and viewer. |
 | Other browser engines | Repeat upload, export, draft, sharing, and camera flows in Safari and Firefox. Tailwind 4 requires Safari 16.4+, Chromium 111+, and Firefox 128+. |
 
-Deploying the upgraded build and checking its live runtime/version remains separate work.
+Physical-device validation remains open; a clean dependency audit and successful deployment checks do not guarantee the absence of unknown vulnerabilities.

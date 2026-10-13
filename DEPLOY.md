@@ -124,8 +124,10 @@ CI menjalankan `npm audit --audit-level=moderate` untuk keduanya.
 
 Angka audit hanya mencakup advisory yang diketahui saat pemeriksaan, bukan
 jaminan bebas kerentanan. Jalankan ulang audit sebelum deployment. Perubahan
-lokal belum diterapkan ke produksi; hasil audit repository tidak membuktikan
-versi yang sedang berjalan di deployment.
+frontend telah diterapkan ke produksi sebagai commit `ce60ea6`, CI dan tes
+produksi lulus. Release API yang sedang berjalan juga diaudit langsung melalui
+SSH dan menghasilkan 0 temuan; kode API tidak berubah sehingga tidak perlu
+di-deploy ulang. Bukti rilis dan batas pemeriksaan ada di `e2e/FINDINGS.md`.
 
 Upgrade ini membutuhkan browser modern: Safari **16.4+**, Chrome/Edge **111+**,
 dan Firefox **128+** (batas Tailwind 4). Perangkat dengan browser lebih lama
