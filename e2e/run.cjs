@@ -211,6 +211,13 @@ async function pngInfo(buffer) {
     pixel: (px, py) => Array.from(x.getImageData(px, py, 1, 1).data),
   };
 }
+// Adding frames is code-locked: open the modal, submit the access code, and
+// keep it open so the hidden file input can receive the upload.
+async function unlockFrameUpload(page, code = "e2e-local-only") {
+  await page.getByRole("button", { name: "Tambah frame", exact: true }).click();
+  await page.getByLabel("Kode akses", { exact: true }).fill(code);
+  await page.getByRole("button", { name: "Lanjut", exact: true }).click();
+}
 async function test(name, fn, options = {}) {
   if (process.env.E2E_FILTER && !new RegExp(process.env.E2E_FILTER).test(name))
     return;
@@ -372,9 +379,29 @@ async function test(name, fn, options = {}) {
     assert.equal(gif.readUInt16LE(8), 480);
   });
   await test("custom frame geometry, library, reset, and templates", async (page) => {
-    await page
-      .getByRole("textbox", { name: "Kode akses koleksi komunitas" })
-      .fill("wrong-code");
+    await unlockFrameUpload(page, "wrong-code");
+    await page.getByLabel("Upload frame PNG", { exact: true }).setInputFiles({
+      name: "Local custom.png",
+      mimeType: "image/png",
+      buffer: frame(),
+    });
+    // Wrong access code: the API rejects the upload and the frame must NOT
+    // be applied anywhere.
+    await until(
+      () => page.getByRole("status").textContent(),
+      (t) => /kode akses salah/i.test(t || ""),
+    );
+    assert.ok(
+      !(await draft(page)).f?.startsWith("data:image/png"),
+      "frame was applied despite a wrong access code",
+    );
+    assert.equal(
+      await page.getByRole("button", { name: "Landscape 16:9" }).isDisabled(),
+      false,
+    );
+    // Correct code: retry in the same modal, then the frame is accepted.
+    await page.getByLabel("Kode akses", { exact: true }).fill("e2e-local-only");
+    await page.getByRole("button", { name: "Lanjut", exact: true }).click();
     await page.getByLabel("Upload frame PNG", { exact: true }).setInputFiles({
       name: "Local custom.png",
       mimeType: "image/png",
@@ -418,17 +445,16 @@ async function test(name, fn, options = {}) {
   });
   await test("community frame survives reload and remote sharing", async (page) => {
     const name = "Community E2E " + Date.now();
-    await page
-      .getByRole("textbox", { name: "Kode akses koleksi komunitas" })
-      .fill("e2e-local-only");
+    await unlockFrameUpload(page);
     await page.getByLabel("Upload frame PNG", { exact: true }).setInputFiles({
       name: name + ".png",
       mimeType: "image/png",
       buffer: frame(),
     });
+    // Single collection: the upload yields exactly one tile in the reel.
     await until(
       () => page.getByRole("button", { name, exact: true }).count(),
-      (n) => n === 2,
+      (n) => n === 1,
     );
     await page.getByRole("button", { name: "Tanpa", exact: true }).click();
     await page.getByRole("button", { name, exact: true }).first().click();
@@ -478,9 +504,7 @@ async function test(name, fn, options = {}) {
     );
     assert.ok(image.pixel(5, 5)[1] > 100, "community frame absent from OG");
     await page.getByRole("button", { name: "Tutup", exact: true }).click();
-    await page
-      .getByRole("textbox", { name: "Kode akses koleksi komunitas" })
-      .fill("e2e-local-only");
+    // The access code from the unlock is still held in this session.
     const collection = await (await fetch(api + "/v1/frames")).json();
     const originalFrame = collection.frames.find(
       (entry) => entry.name === name,
@@ -494,7 +518,7 @@ async function test(name, fn, options = {}) {
       .click();
     await until(
       () => page.getByRole("button", { name, exact: true }).count(),
-      (n) => n === 1,
+      (n) => n === 0,
     );
     assert.equal((await fetch(originalFrame.imageUrl)).status, 404);
     assert.equal(
@@ -659,6 +683,7 @@ async function test(name, fn, options = {}) {
       () => draft(page),
       (d) => d?.r === "9:16",
     );
+    await unlockFrameUpload(page);
     const c = createCanvas(1080, 1920);
     const x = c.getContext("2d");
     x.fillStyle = "#22aa44";
@@ -773,27 +798,31 @@ async function test(name, fn, options = {}) {
     },
     { viewport: { width: 320, height: 568 } },
   );
-  await test("frame storage quota failure is reported honestly", async (page) => {
+  await test("frame upload failure is reported honestly", async (page) => {
     await page.evaluate(() => {
-      const original = Storage.prototype.setItem;
-      Storage.prototype.setItem = function (key, value) {
-        if (key === "selfie-booth:frames:v1")
-          throw new DOMException("quota", "QuotaExceededError");
-        return original.call(this, key, value);
+      const original = window.fetch;
+      window.fetch = async (input, init) => {
+        if (
+          String(input).endsWith("/v1/frames") &&
+          init?.method === "POST"
+        )
+          return new Response("{}", { status: 500 });
+        return original(input, init);
       };
     });
+    await unlockFrameUpload(page);
     await page.getByLabel("Upload frame PNG", { exact: true }).setInputFiles({
       name: "quota-frame.png",
       mimeType: "image/png",
       buffer: frame(),
     });
     await until(
-      () => draft(page),
-      (d) => d?.f?.startsWith("data:image/png"),
+      () => page.getByRole("status").textContent(),
+      (t) => /gagal/i.test(t || ""),
     );
-    assert.match(
-      await page.getByRole("status").textContent(),
-      /penyimpanan.*penuh/i,
+    assert.ok(
+      !(await draft(page)).f?.startsWith("data:image/png"),
+      "frame was applied despite the failed upload",
     );
     assert.equal(
       await page.evaluate(() => localStorage.getItem("selfie-booth:frames:v1")),

@@ -168,3 +168,9 @@ export const ImageIcon = ({ className, size = 24 }: IconProps) => (
     <polyline points="21 15 16 10 5 21" />
   </svg>
 );
+
+export const PlusIcon = ({ className, size = 24 }: IconProps) => (
+  <svg {...base(size)} className={className}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);

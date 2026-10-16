@@ -61,10 +61,13 @@ import { mergeCapturedSlots } from "../components/camera/session";
 import ShareModal from "../components/ShareModal";
 import { Toast, useToast } from "../components/useToast";
 import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
   CameraIcon,
   CheckIcon,
   DownloadIcon,
   ImageIcon,
+  PlusIcon,
   ResetIcon,
   ShareIcon,
   UploadIcon,
@@ -72,6 +75,7 @@ import {
   ZoomInIcon,
   ZoomOutIcon,
 } from "../components/icons";
+import AddFrameModal from "../components/AddFrameModal";
 
 export default function Home() {
   const [state, setState] = useState<BoothState>(() => defaultState(3));
@@ -84,18 +88,51 @@ export default function Home() {
   const [frameLibrary, setFrameLibrary] = useState<SavedFrame[]>([]);
   const [communityFrames, setCommunityFrames] = useState<CommunityFrame[]>([]);
   const [frameCode, setFrameCode] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [frameUnlocked, setFrameUnlocked] = useState(false);
+  const [frameError, setFrameError] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<ShareLink | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [busy, setBusy] = useState<"download" | "share" | "gif" | null>(null);
   const { toast, show } = useToast();
   const frameInputRef = useRef<HTMLInputElement>(null);
+  const frameReelRef = useRef<HTMLDivElement>(null);
+  const scrollFrameReel = useCallback((dir: 1 | -1) => {
+    const el = frameReelRef.current;
+    if (!el) return;
+    const step = 264;
+    const atStart = el.scrollLeft <= 2;
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+    // Nonstop reel: past the last frame wraps back to the first (and vice versa).
+    if (dir > 0) el.scrollTo({ left: atEnd ? 0 : el.scrollLeft + step, behavior: "smooth" });
+    else el.scrollTo({ left: atStart ? el.scrollWidth : el.scrollLeft - step, behavior: "smooth" });
+  }, []);
   const currentState = useRef(state);
   currentState.current = state;
   const photoRequests = useRef([0, 0, 0, 0]);
   const frameRequest = useRef(0);
   const communitySources = useRef(new Map<string, string>());
   const shareRequest = useRef(0);
+
+  // The frame access code lives for the whole browser session (matching the
+  // modal copy) so community actions keep working after a page reload.
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("selfie-booth:frame-code");
+      if (saved) {
+        setFrameCode(saved);
+        setFrameUnlocked(true);
+      }
+    } catch {}
+  }, []);
+  const updateFrameCode = useCallback((value: string) => {
+    setFrameCode(value);
+    try {
+      if (value) sessionStorage.setItem("selfie-booth:frame-code", value);
+      else sessionStorage.removeItem("selfie-booth:frame-code");
+    } catch {}
+  }, []);
 
   // Load: shared link first, then local draft.
   useEffect(() => {
@@ -313,46 +350,58 @@ export default function Home() {
             ? (windowCount as GridCount)
             : null;
         const grid = detectedGrid ?? original.grid;
-        setState((s) => ({
-          ...s,
-          frameSrc: src,
-          frameRatio: ratio,
-          grid,
-          frameGrid: grid,
-          layoutVersion: 2,
-          frameInset: inset ?? photoInset(original, size.w, size.h),
-        }));
-        setActiveSlot((a) => Math.min(a, grid - 1));
         const name = file.name.replace(/\.png$/i, "").slice(0, 40) || "Frame";
-        const { frames, saved } = addFrameToLibrary({
-          name,
-          src,
-          ratio,
-          grid,
-          inset,
-        });
-        setFrameLibrary(frames);
-        if (communityEnabled() && frameCode.trim()) {
-          try {
-            await addCommunityFrame({
-              name,
-              code: frameCode.trim(),
-              dataUrl: src,
-            });
-            setCommunityFrames(await listCommunityFrames(ratio));
-            show("Frame ditambahkan ke koleksi komunitas", "success");
-          } catch (err) {
-            show(
-              `${(err as Error).message} ${saved ? "Frame tetap tersimpan di perangkat ini." : "Frame diterapkan, tetapi penyimpanan perangkat penuh."}`,
-              "info",
-            );
+        const applyFrame = () => {
+          setState((s) => ({
+            ...s,
+            frameSrc: src,
+            frameRatio: ratio,
+            grid,
+            frameGrid: grid,
+            layoutVersion: 2,
+            frameInset: inset ?? photoInset(original, size.w, size.h),
+          }));
+          setActiveSlot((a) => Math.min(a, grid - 1));
+        };
+
+        if (communityEnabled()) {
+          // One collection: adding a frame requires the access code, and the
+          // API validates it at upload time — a wrong code rejects the frame
+          // entirely (nothing is applied or stored locally).
+          const code = frameCode.trim();
+          if (!code) {
+            setFrameError("Masukkan kode akses dulu.");
+            setAddOpen(true);
+            return;
           }
-        } else if (communityEnabled()) {
-          show(
-            `${saved ? "Frame tersimpan di perangkat ini." : "Frame diterapkan, tetapi penyimpanan perangkat penuh."} Isi kode akses untuk menambahkannya ke koleksi komunitas.`,
-            "info",
-          );
+          try {
+            await addCommunityFrame({ name, code, dataUrl: src });
+          } catch (err) {
+            if (frameRequest.current !== request) return;
+            const message = (err as Error).message;
+            setFrameError(message);
+            if (message.includes("Kode akses salah")) setFrameUnlocked(false);
+            show(message, "error");
+            return;
+          }
+          if (frameRequest.current !== request) return;
+          applyFrame();
+          setCommunityFrames(await listCommunityFrames(ratio));
+          setFrameError("");
+          setAddOpen(false);
+          show("Frame ditambahkan ke koleksi", "success");
         } else {
+          // No collection API configured: keep the device-local library.
+          applyFrame();
+          const { frames, saved } = addFrameToLibrary({
+            name,
+            src,
+            ratio,
+            grid,
+            inset,
+          });
+          setFrameLibrary(frames);
+          setAddOpen(false);
           const detail = [
             inset ? "jendela foto diukur otomatis" : "frame diterapkan",
             detectedGrid ? `· frame ini untuk ${detectedGrid} foto` : "",
@@ -672,7 +721,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-6xl gap-6 px-5 py-6 lg:grid-cols-[1fr_360px]">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-5 py-6 lg:grid-cols-[1fr_360px]">
         {/* Preview */}
         <section className="min-w-0">
           <div className="mb-3 flex items-center justify-between text-xs text-ink-600">
@@ -832,7 +881,7 @@ export default function Home() {
         </section>
 
         {/* Controls */}
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4">
           <Panel step={1} title="Layout" open>
             <LayoutChoices
               state={state}
@@ -843,29 +892,130 @@ export default function Home() {
           </Panel>
 
           <Panel step={2} title="Frame">
-            <div className="grid grid-cols-4 gap-2">
-              <FrameChoice
-                selected={!state.frameSrc}
-                onClick={() => chooseFrame(null)}
-                label="Tanpa"
-                ratio={state.frameRatio}
+            {/* One nonstop reel: builtin + saved + community frames, then the
+                single "+" entry point (code-locked) for adding frames. */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => scrollFrameReel(-1)}
+                aria-label="Geser frame ke kiri"
+                className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/15 bg-ink-950/90 p-1.5 text-ink-600 transition hover:border-brand hover:text-cream"
               >
-                <div className="flex h-full w-full items-center justify-center text-ink-600">
-                  <XIcon size={16} />
+                <ArrowLeftIcon size={14} />
+              </button>
+              <div
+                ref={frameReelRef}
+                className="flex gap-2 overflow-x-auto px-6 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              >
+                <div className="w-24 shrink-0">
+                  <FrameChoice
+                    selected={!state.frameSrc}
+                    onClick={() => chooseFrame(null)}
+                    label="Tanpa"
+                    ratio={state.frameRatio}
+                  >
+                    <div className="flex h-full w-full items-center justify-center text-ink-600">
+                      <XIcon size={16} />
+                    </div>
+                  </FrameChoice>
                 </div>
-              </FrameChoice>
-              {framesForRatio(state.frameRatio).map((f) => (
-                <FrameChoice
-                  key={f.id}
-                  selected={state.frameSrc === f.src}
-                  onClick={() => chooseFrame(f.src)}
-                  label={f.name}
-                  ratio={f.ratio}
-                >
-                  <img src={f.src} alt="" className="h-full w-full" />
-                </FrameChoice>
-              ))}
+                {framesForRatio(state.frameRatio).map((f) => (
+                  <div key={f.id} className="w-24 shrink-0">
+                    <FrameChoice
+                      selected={state.frameSrc === f.src}
+                      onClick={() => chooseFrame(f.src)}
+                      label={f.name}
+                      ratio={f.ratio}
+                    >
+                      <img src={f.src} alt="" className="h-full w-full" />
+                    </FrameChoice>
+                  </div>
+                ))}
+                {libraryFrames.map((f) => (
+                  <div key={f.id} className="group relative w-24 shrink-0">
+                    <FrameChoice
+                      selected={state.frameSrc === f.src}
+                      onClick={() => applySavedFrame(f)}
+                      label={f.name}
+                      ratio={f.ratio}
+                    >
+                      <img
+                        src={f.src}
+                        alt=""
+                        className="h-full w-full object-contain"
+                      />
+                    </FrameChoice>
+                    <button
+                      type="button"
+                      onClick={() => removeSavedFrame(f.id)}
+                      aria-label={`Hapus ${f.name} dari koleksi`}
+                      title={`Hapus ${f.name} dari koleksi`}
+                      className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                    >
+                      <XIcon size={11} />
+                    </button>
+                  </div>
+                ))}
+                {communityFrames.map((f) => (
+                  <div key={f.id} className="group relative w-24 shrink-0">
+                    <FrameChoice
+                      selected={
+                        state.frameSrc === f.imageUrl ||
+                        state.frameSrc === communitySources.current.get(f.id)
+                      }
+                      onClick={() => applyCommunityFrame(f)}
+                      label={f.name}
+                      ratio={f.ratio}
+                    >
+                      <img
+                        src={f.imageUrl}
+                        alt=""
+                        className="h-full w-full object-contain"
+                      />
+                    </FrameChoice>
+                    <button
+                      type="button"
+                      onClick={() => removeCommunityFrame(f)}
+                      aria-label={`Hapus ${f.name} dari koleksi komunitas`}
+                      title="Hapus dari koleksi komunitas"
+                      className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                    >
+                      <XIcon size={11} />
+                    </button>
+                  </div>
+                ))}
+                <div className="w-24 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFrameError("");
+                      setAddOpen(true);
+                    }}
+                    aria-label="Tambah frame"
+                    className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-white/15 p-1.5 text-ink-600 transition hover:border-brand hover:text-brand"
+                  >
+                    <PlusIcon size={18} />
+                    <span className="text-[10px] font-medium">Tambah</span>
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => scrollFrameReel(1)}
+                aria-label="Geser frame ke kanan"
+                className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/15 bg-ink-950/90 p-1.5 text-ink-600 transition hover:border-brand hover:text-cream"
+              >
+                <ArrowRightIcon size={14} />
+              </button>
             </div>
+            <input
+              ref={frameInputRef}
+              type="file"
+              accept="image/png"
+              aria-label="Upload frame PNG"
+              className="hidden"
+              onChange={handleFrameUpload}
+            />
 
             <div className="mt-3 space-y-2">
               {customFrame && (
@@ -891,116 +1041,6 @@ export default function Home() {
                   >
                     <XIcon size={16} />
                   </button>
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => frameInputRef.current?.click()}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-ink-600 transition hover:border-brand hover:text-cream"
-              >
-                <UploadIcon size={15} /> Upload frame PNG · {layout.w}×
-                {layout.h}
-              </button>
-              <input
-                ref={frameInputRef}
-                type="file"
-                accept="image/png"
-                aria-label="Upload frame PNG"
-                className="hidden"
-                onChange={handleFrameUpload}
-              />
-              {communityEnabled() && (
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold">
-                      Koleksi komunitas · {communityFrames.length} frame ·{" "}
-                      {state.frameRatio}
-                    </p>
-                    <input
-                      type="text"
-                      value={frameCode}
-                      onChange={(e) => setFrameCode(e.target.value)}
-                      placeholder="Kode akses"
-                      aria-label="Kode akses koleksi komunitas"
-                      className="w-28 rounded-md border border-white/15 bg-ink-950 px-2 py-1 text-[11px] text-cream placeholder:text-ink-600 focus:border-brand focus:outline-hidden"
-                    />
-                  </div>
-                  {communityFrames.length === 0 ? (
-                    <p className="text-[11px] text-ink-600">
-                      Belum ada frame komunitas untuk rasio ini.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-2">
-                      {communityFrames.map((f) => (
-                        <div key={f.id} className="group relative">
-                          <FrameChoice
-                            selected={
-                              state.frameSrc === f.imageUrl ||
-                              state.frameSrc ===
-                                communitySources.current.get(f.id)
-                            }
-                            onClick={() => applyCommunityFrame(f)}
-                            label={f.name}
-                            ratio={f.ratio}
-                          >
-                            <img
-                              src={f.imageUrl}
-                              alt=""
-                              className="h-full w-full object-contain"
-                            />
-                          </FrameChoice>
-                          <button
-                            type="button"
-                            onClick={() => removeCommunityFrame(f)}
-                            aria-label={`Hapus ${f.name} dari koleksi komunitas`}
-                            title="Hapus dari koleksi komunitas"
-                            className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
-                          >
-                            <XIcon size={11} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <p className="mt-2 text-[11px] text-ink-600">
-                    Terlihat oleh semua pengguna. Isi kode akses di atas sebelum
-                    upload untuk menambah frame ke koleksi ini.
-                  </p>
-                </div>
-              )}
-              {libraryFrames.length > 0 && (
-                <div>
-                  <p className="mb-2 text-xs font-semibold">
-                    Koleksi perangkat ini · {libraryFrames.length} frame ·{" "}
-                    {state.frameRatio}
-                  </p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {libraryFrames.map((f) => (
-                      <div key={f.id} className="group relative">
-                        <FrameChoice
-                          selected={state.frameSrc === f.src}
-                          onClick={() => applySavedFrame(f)}
-                          label={f.name}
-                          ratio={f.ratio}
-                        >
-                          <img
-                            src={f.src}
-                            alt=""
-                            className="h-full w-full object-contain"
-                          />
-                        </FrameChoice>
-                        <button
-                          type="button"
-                          onClick={() => removeSavedFrame(f.id)}
-                          aria-label={`Hapus ${f.name} dari koleksi`}
-                          title={`Hapus ${f.name} dari koleksi`}
-                          className="absolute -right-1.5 -top-1.5 rounded-full bg-ink-950 p-1 text-ink-600 opacity-0 transition hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
-                        >
-                          <XIcon size={11} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>
@@ -1162,6 +1202,31 @@ export default function Home() {
           }}
         />
       )}
+      <AddFrameModal
+        open={addOpen}
+        code={frameCode}
+        onCodeChange={updateFrameCode}
+        unlocked={frameUnlocked}
+        error={frameError}
+        busy={false}
+        requiresCode={communityEnabled()}
+        templateSize={{ w: layout.w, h: layout.h }}
+        onUnlock={() => {
+          if (frameCode.trim()) {
+            setFrameError("");
+            setFrameUnlocked(true);
+          }
+        }}
+        onBackToCode={() => {
+          setFrameUnlocked(false);
+          setFrameError("");
+        }}
+        onClose={() => {
+          setAddOpen(false);
+          setFrameError("");
+        }}
+        onPickFile={() => frameInputRef.current?.click()}
+      />
     </main>
   );
 }
