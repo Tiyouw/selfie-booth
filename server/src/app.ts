@@ -46,6 +46,19 @@ function jsonError(c: Context, status: 400 | 403 | 404 | 410 | 413 | 429 | 500, 
 const FRAME_RATIOS = ['16:9', '9:16', '1:3'] as const;
 type FrameRatioValue = (typeof FRAME_RATIOS)[number];
 
+/**
+ * Public base URL for links the API hands back to browsers. Behind a TLS
+ * terminator (Traefik) the internal request scheme is http, so trust the
+ * forwarded headers first — otherwise every returned URL is http:// and
+ * browsers block it as mixed content ("Failed to fetch" on https pages).
+ */
+function externalBase(c: Context): string {
+  const proto = (c.req.header('x-forwarded-proto') ?? '').split(',')[0].trim();
+  const host = (c.req.header('x-forwarded-host') ?? '').split(',')[0].trim() || c.req.header('host');
+  if (proto && host) return `${proto}://${host}`;
+  return c.req.url.split('/v1/')[0];
+}
+
 /** Constant-time shared-code check (empty configured code means disabled). */
 function verifyCode(configured: string, given: string): boolean {
   if (!configured) return false;
@@ -199,7 +212,7 @@ export function buildApp({ config, db, postLimit = 20, frameLimit = 20 }: AppDep
           {
             id,
             url: `${linkOrigin}/s/${id}`,
-            gifUrl: gif ? `${c.req.url.split('/v1/')[0]}/v1/media/${id}.gif` : undefined,
+            gifUrl: gif ? `${externalBase(c)}/v1/media/${id}.gif` : undefined,
             expiresAt,
             deleteToken,
           },
@@ -221,7 +234,7 @@ export function buildApp({ config, db, postLimit = 20, frameLimit = 20 }: AppDep
     // The stored payload verbatim, plus the GIF location when one exists.
     const body = { ...JSON.parse(row.payload) };
     if (typeof body === 'object' && body !== null && row.has_gif === 1) {
-      (body as Record<string, unknown>).gifUrl = `${c.req.url.split('/v1/')[0]}/v1/media/${row.id}.gif`;
+      (body as Record<string, unknown>).gifUrl = `${externalBase(c)}/v1/media/${row.id}.gif`;
     }
     return c.body(JSON.stringify(body), 200, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -289,7 +302,7 @@ export function buildApp({ config, db, postLimit = 20, frameLimit = 20 }: AppDep
         ? db.prepare('SELECT id, name, ratio, grid, inset, size, created_at FROM frames WHERE ratio = ? ORDER BY created_at DESC LIMIT 100').all(ratio)
         : db.prepare('SELECT id, name, ratio, grid, inset, size, created_at FROM frames ORDER BY created_at DESC LIMIT 100').all()
     ) as FrameRow[];
-    const base = c.req.url.split('/v1/')[0];
+    const base = externalBase(c);
     return c.json({ frames: rows.map((row) => frameRecord(row, base)) });
   });
 
@@ -349,7 +362,7 @@ export function buildApp({ config, db, postLimit = 20, frameLimit = 20 }: AppDep
         db.prepare(
           'INSERT INTO frames (id, name, ratio, grid, inset, png, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         ).run(id, name, validated.ratio, validated.grid, JSON.stringify(validated.inset), pngBytes, png.size, createdAt);
-        return c.json({ id, name, ratio: validated.ratio, grid: validated.grid, inset: validated.inset, createdAt, imageUrl: `${c.req.url.split('/v1/')[0]}/v1/frames/${id}/image` }, 201);
+        return c.json({ id, name, ratio: validated.ratio, grid: validated.grid, inset: validated.inset, createdAt, imageUrl: `${externalBase(c)}/v1/frames/${id}/image` }, 201);
       } catch (err) {
         const code = (err as NodeJS.ErrnoException & { code?: string })?.code;
         if (code !== 'SQLITE_CONSTRAINT_PRIMARYKEY') throw err;
