@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Selfie Booth — Tiyouw',
+  title: 'HIMASIF Booth',
   description:
-    'Photobooth web: selfie, susun foto di frame custom, download PNG, dan share link.',
+    'Photobooth web HIMASIF: selfie, susun foto di frame custom, download PNG, dan share link.',
 };
 
 export const viewport: Viewport = {
