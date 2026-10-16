@@ -149,6 +149,22 @@ async function draft(page) {
     ? JSON.parse(decompressFromEncodedURIComponent(raw.split("|")[0]))
     : null;
 }
+async function expandPanels(page, ready, timeout = 10000) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    for (const panel of await page.locator("details").all()) {
+      // Note: React renders open="" (empty string), so getAttribute alone
+      // cannot distinguish closed from open — use the DOM property. A click
+      // racing React hydration can be re-collapsed, hence the retry loop.
+      if (!(await panel.evaluate((el) => el.open).catch(() => true))) {
+        await panel.locator("summary").click().catch(() => {});
+      }
+    }
+    if (!ready || (await ready.isVisible().catch(() => false))) return;
+    if (Date.now() > end) throw new Error("Panels did not expand in time");
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
 async function until(fn, predicate, timeout = 10000) {
   const end = Date.now() + timeout;
   let value;
@@ -209,8 +225,15 @@ async function test(name, fn, options = {}) {
   page.on("pageerror", (e) => errors.push(e.message));
   try {
     await page.goto(base);
-    await page.getByRole("button", { name: "3 Foto", exact: true }).waitFor();
+    // Steps live inside collapsed <details> panels; expand them all before
+    // waiting for the first interactive control.
+    await page.locator("details > summary").first().waitFor();
     await until(() => draft(page), Boolean);
+    await expandPanels(
+      page,
+      page.getByRole("button", { name: "3 Foto", exact: true }),
+    );
+    await page.getByRole("button", { name: "3 Foto", exact: true }).waitFor();
     await Promise.race([
       fn(page, context),
       new Promise((_, reject) => {
@@ -376,6 +399,11 @@ async function test(name, fn, options = {}) {
       () => draft(page),
       (d) => d?.f === "/frames/klasik-16x9.svg",
     );
+    await page.reload();
+    await expandPanels(
+      page,
+      page.getByRole("button", { name: "Local custom", exact: true }),
+    );
     assert.equal(
       await page
         .getByRole("button", { name: "Local custom", exact: true })
@@ -421,6 +449,10 @@ async function test(name, fn, options = {}) {
       (d) => d?.f === source,
     );
     await page.reload();
+    await expandPanels(
+      page,
+      page.getByRole("button", { name: "Hapus frame custom", exact: true }),
+    );
     await page
       .getByRole("button", { name: "Hapus frame custom", exact: true })
       .waitFor({ timeout: 5000 });

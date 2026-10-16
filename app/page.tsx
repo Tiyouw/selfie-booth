@@ -630,7 +630,7 @@ export default function Home() {
               <h1 className="text-lg font-bold leading-none">
                 HIMASIF<span className="text-gradient"> Booth</span>
               </h1>
-              <p className="text-[11px] text-ink-600">by tiyoouw.app</p>
+              <p className="text-[11px] text-ink-600">by MediatekAstra</p>
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
@@ -833,7 +833,7 @@ export default function Home() {
 
         {/* Controls */}
         <aside className="space-y-4">
-          <Panel step={1} title="Layout">
+          <Panel step={1} title="Layout" open>
             <LayoutChoices
               state={state}
               locked={customFrame}
@@ -1169,14 +1169,19 @@ export default function Home() {
 function Panel({
   step,
   title,
+  open = false,
   children,
 }: {
   step: number;
   title: string;
+  open?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <details className="group rounded-xl border border-white/10 bg-ink-900/60 transition-colors open:border-brand/30">
+    <details
+      open={open}
+      className="group rounded-xl border border-white/10 bg-ink-900/60 transition-colors open:border-brand/30"
+    >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl p-4 text-sm font-semibold text-cream transition hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-2">
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/10 text-[11px] text-ink-600">
