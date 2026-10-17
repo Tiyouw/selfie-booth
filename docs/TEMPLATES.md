@@ -1,5 +1,16 @@
 # Custom photo-strip templates
 
+## Expo 2026 default
+
+New sessions and **Mulai baru** use the bundled **Expo 2026** frame: the original
+HIMASIF green artwork at 1920 × 1080, with four windows in a 2 × 2 grid. No upload
+or access code is needed. Selecting it from another layout automatically selects
+four photos. Choose Klasik, Polaroid, Neon, or Tanpa to change the photo count;
+other ratios remain available. Existing drafts and shared designs keep their
+selected frame. The artwork is bundled unchanged at
+`public/frames/expo-2026-16x9.png`; deploy frontend and API together so shared
+image renders can resolve the same built-in asset.
+
 Choose the frame ratio, number of photos, and built-in margin style before downloading templates. Native sizes are 1920 × 1080 (16:9), 1080 × 1920 (9:16), and 640 × 1920 (1:3). Portrait layouts support up to three equal vertical photos; four photos are available as a landscape 2 × 2 grid.
 
 - **SVG guide:** an annotated editing reference with Bahasa Indonesia labels and each photo window's `x`, `y`, `w`, and `h` in native pixels, measured from the top-left corner. The legend names the base frame and shows the gap and all four outer margins. Exact geometry is also embedded in the SVG's `selfie-booth-template` metadata. The dashed 24 px safe inset is a recommendation for keeping text and logos away from the edge, **not print bleed**. Check printer-specific bleed requirements separately.
@@ -7,11 +18,27 @@ Choose the frame ratio, number of photos, and built-in margin style before downl
 
 The guide is not an uploadable frame. Export the edited starter as a transparent PNG, not JPEG, and import it at the matching ratio; its canvas must exactly match the selected ratio's native dimensions. On upload the app measures the PNG's transparent windows itself (`lib/frameGeom.ts`): the union bounding box of all sizable windows becomes the custom `frameInset`, and the window count is used as the photo-count hint — importing a three-window frame while a different count is selected switches the grid automatically (portrait four-window frames are invalid). The previously selected base frame no longer matters, so a frame built on the Polaroid starter imports correctly even from "Tanpa". Decorations drawn **inside** a photo window stay opaque and will overlap that photo; keep windows fully transparent and place captions in the border margins. Canvas-generated PNGs do not retain the guide's geometry metadata. Layout changes are locked while a custom frame is selected; returning to a built-in frame clears the custom geometry fields.
 
-Both downloads have matching filename prefixes containing the ratio, photo count, base-frame ID, outer insets in **top/right/bottom/left** order, and layout version. For example, `selfie-booth-1x3-3-foto-polaroid-1x3-inset-144-28-240-28-v2-panduan.svg` pairs with the same prefix ending in `-dasar.png`. Custom frames use `kustom`; no frame uses `tanpa-bingkai`. The filename is a reference only; the import measures the PNG's own windows, so the base frame named in the filename does not need to be selected when reimporting.
+Both downloads have matching filename prefixes containing the ratio, photo count, base-frame ID, outer insets in **top/right/bottom/left** order, and layout version. For example, `himasif-booth-1x3-3-foto-polaroid-1x3-inset-144-28-240-28-v2-panduan.svg` pairs with the same prefix ending in `-dasar.png`. Custom frames use `kustom`; no frame uses `tanpa-bingkai`. The filename is a reference only; the import measures the PNG's own windows, so the base frame named in the filename does not need to be selected when reimporting.
 
 Old shared links and local drafts retain their original asymmetric portrait-three layout. New sessions use equal rows; choosing a new layout upgrades `layoutVersion` to 2. A guide generated from a legacy session deliberately uses that session's original geometry.
 
 ## Persistence
+
+Photo windows may also contain a semi-transparent tint or effect: pixels with
+alpha up to 128/255 (about 50% opacity) count toward a window. Keep borders and
+dividers opaque enough to separate the windows. Detection only reads alpha;
+it does not erase or recolor the artwork. This supports four-window landscape
+overlays such as tinted event frames without mistaking small, fully clear
+decorative cutouts for the only photo windows. Fully transparent windows remain
+the safest choice; heavier tints may not be recognized.
+
+When selecting an existing local or community frame, the client remeasures its
+PNG instead of trusting a previously stored photo count. Entries uploaded with
+the older clear-pixels-only detector therefore recover their actual layout on
+selection. Existing drafts keep their snapshot until the frame is reselected;
+the corrected layout then persists through draft save and reload. Deploy the
+frontend and API together so newly uploaded collection records also store the
+correct count.
 
 Uploaded frames are also kept in a per-device frame library under the `selfie-booth:frames:v1` localStorage key (max 12 entries; same-src uploads refresh the existing entry). The library survives refreshes and "Mulai baru" by design. The Frame panel lists library frames for the currently selected ratio with a delete button per entry; picking one restores its measured geometry and photo count. If the storage quota is exceeded, the frame is still applied to the design but not added to the library, and a toast explains why.
 

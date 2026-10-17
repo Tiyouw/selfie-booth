@@ -1,6 +1,6 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import type { BoothState, FrameRatio, GridCount, Inset, PhotoSlot } from './types';
-import { DEFAULT_FRAME, isBuiltinFrame } from './frames';
+import { DEFAULT_FRAME, findBuiltinFrame, isBuiltinFrame } from './frames';
 import { MAX_ZOOM, MIN_ZOOM, clamp, exportSize, gridGap, gridLayout } from './layout';
 
 export const MAX_GRID: GridCount = 4;
@@ -19,11 +19,13 @@ export function makeSlots(): PhotoSlot[] {
   }));
 }
 
-export function defaultState(grid: GridCount = 3): BoothState {
+/** New sessions use the event frame; explicit counts use a flexible classic frame. */
+export function defaultState(grid?: GridCount): BoothState {
+  const frame = grid === undefined ? DEFAULT_FRAME : findBuiltinFrame('/frames/klasik-16x9.svg')!;
   return {
-    grid,
-    frameSrc: DEFAULT_FRAME.src,
-    frameRatio: DEFAULT_FRAME.ratio,
+    grid: grid ?? frame.grid ?? 3,
+    frameSrc: frame.src,
+    frameRatio: frame.ratio,
     layoutVersion: 2,
     slots: makeSlots(),
   };
@@ -104,13 +106,19 @@ export function sanitizeState(p: unknown): BoothState | null {
   if (!p || typeof p !== 'object') return null;
   const o = p as Record<string, unknown>;
   if (o.v !== undefined && o.v !== 1 && o.v !== 2 && o.v !== 3) return null;
-  const frameRatio: FrameRatio = o.r === '1:3' ? '1:3' : o.r === '9:16' ? '9:16' : '16:9';
-  const grid = validGrid(o.g, frameRatio);
-  const layoutVersion = o.v === 3 && o.l === 2 ? 2 : 1;
+  let frameRatio: FrameRatio = o.r === '1:3' ? '1:3' : o.r === '9:16' ? '9:16' : '16:9';
+  let grid = validGrid(o.g, frameRatio);
+  let layoutVersion: 1 | 2 = o.v === 3 && o.l === 2 ? 2 : 1;
 
   let frameSrc: string | null = null;
   if (typeof o.f === 'string') {
     if (o.f.startsWith('data:image/png') || isBuiltinFrame(o.f)) frameSrc = o.f;
+  }
+  const builtin = findBuiltinFrame(frameSrc);
+  if (builtin?.grid) {
+    frameRatio = builtin.ratio;
+    grid = builtin.grid;
+    layoutVersion = 2;
   }
 
   const raw = Array.isArray(o.s) ? (o.s as unknown[]) : [];
@@ -127,7 +135,7 @@ export function sanitizeState(p: unknown): BoothState | null {
   });
 
   const state: BoothState = { grid, frameSrc, frameRatio, layoutVersion, slots };
-  if (o.v === 3) {
+  if (o.v === 3 && !builtin?.grid) {
     const frameInset = sanitizeInset(o.i, frameRatio, grid, layoutVersion);
     if (frameInset) state.frameInset = frameInset;
     if (typeof o.k === 'number' && Number.isInteger(o.k) && o.k >= 1 && o.k <= (frameRatio === '16:9' ? 4 : 3)) {
@@ -157,7 +165,7 @@ export function loadDraft(): BoothState | null {
     const [payload, g] = raw.split('|');
     const state = decodeState(payload);
     if (!state) return null;
-    const grid = g === undefined ? state.grid : validGrid(Number(g), state.frameRatio, state.grid);
+    const grid = findBuiltinFrame(state.frameSrc)?.grid ?? (g === undefined ? state.grid : validGrid(Number(g), state.frameRatio, state.grid));
     return { ...state, grid };
   } catch {
     return null;

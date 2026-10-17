@@ -6,12 +6,19 @@ export function makeFramePng(
   h: number,
   windows: { x: number; y: number; w: number; h: number }[],
   color = '#22aa44',
+  windowAlpha = 0,
 ): Buffer {
   const canvas = createCanvas(w, h);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = color;
   ctx.fillRect(0, 0, w, h);
-  for (const win of windows) ctx.clearRect(win.x, win.y, win.w, win.h);
+  for (const win of windows) {
+    ctx.clearRect(win.x, win.y, win.w, win.h);
+    if (windowAlpha > 0) {
+      ctx.fillStyle = `rgba(30, 20, 50, ${windowAlpha / 255})`;
+      ctx.fillRect(win.x, win.y, win.w, win.h);
+    }
+  }
   return canvas.encodeSync('png');
 }
 

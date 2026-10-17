@@ -80,7 +80,13 @@ export interface PreparedFrame {
 export async function fileToFrame(file: File, expectedRatio?: FrameRatio): Promise<PreparedFrame> {
   if (!file.type.startsWith('image/png')) throw new Error('Frame harus berupa PNG transparan');
   if (file.size > 10 * 1024 * 1024) throw new Error('Frame maksimal 10 MB');
-  const img = await loadImage(await fileToDataURL(file));
+  return prepareFrameSource(await fileToDataURL(file), expectedRatio);
+}
+
+/** Remeasure saved overlays too: older collections may have counted only clear
+ * decorative cutouts instead of the actual tinted photo windows. */
+export async function prepareFrameSource(src: string, expectedRatio?: FrameRatio): Promise<PreparedFrame> {
+  const img = await loadImage(src);
   const ratio = detectFrameRatio(img);
   const size = exportSize(expectedRatio ?? ratio);
   if (ratio !== (expectedRatio ?? ratio) || img.naturalWidth !== size.w || img.naturalHeight !== size.h) {
@@ -93,14 +99,12 @@ export async function fileToFrame(file: File, expectedRatio?: FrameRatio): Promi
   if (!ctx) throw new Error('Canvas tidak tersedia');
   ctx.drawImage(img, 0, 0);
   const pixels = ctx.getImageData(0, 0, size.w, size.h).data;
-  let transparent = false;
-  for (let i = 3; i < pixels.length; i += 4) {
-    if (pixels[i] === 0) { transparent = true; break; }
-  }
-  if (!transparent) throw new Error('Frame tidak memiliki jendela transparan. Jangan upload gambar panduan.');
   // Measure the actual photo windows so the layout follows the PNG, not the
   // previously selected base frame (docs/TEMPLATES.md).
   const windows = detectTransparentWindows(pixels, size.w, size.h);
+  if (windows.length === 0) {
+    throw new Error('Frame tidak memiliki jendela foto transparan atau semi-transparan yang cukup jelas. Gunakan PNG dengan area foto maksimal 50% opasitas.');
+  }
   const maxGrid = ratio === '16:9' ? 4 : 3;
   if (windows.length < 1 || windows.length > maxGrid) {
     throw new Error(`Frame harus memiliki 1–${maxGrid} jendela foto transparan yang jelas.`);

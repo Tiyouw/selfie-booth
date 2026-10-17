@@ -86,6 +86,29 @@ test('uploads without or with a wrong access code are rejected; disabled collect
   }
 });
 
+test('four semi-transparent photo windows are stored as four photos without any fully clear pixels', async () => {
+  const { app, cleanup } = makeApp();
+  try {
+    const png = makeFramePng(1920, 1080, [
+      { x: 40, y: 40, w: 906, h: 486 },
+      { x: 974, y: 40, w: 906, h: 486 },
+      { x: 40, y: 554, w: 906, h: 486 },
+      { x: 974, y: 554, w: 906, h: 486 },
+    ], '#aaff00', 126);
+    const response = await app.request('/v1/frames', { method: 'POST', body: frameForm(png) });
+    assert.equal(response.status, 201);
+    const created = await response.json() as { id: string; grid: number; inset: unknown };
+    assert.equal(created.grid, 4);
+    assert.deepEqual(created.inset, { top: 40, right: 40, bottom: 40, left: 40 });
+    const list = await (await app.request('/v1/frames?ratio=16:9')).json() as { frames: { id: string; grid: number }[] };
+    assert.equal(list.frames.find(frame => frame.id === created.id)?.grid, 4);
+    const stored = Buffer.from(await (await app.request(`/v1/frames/${created.id}/image`)).arrayBuffer());
+    assert.deepEqual(stored, png, 'detecting tinted windows must not rewrite artwork');
+  } finally {
+    cleanup();
+  }
+});
+
 test('invalid frames are rejected: wrong size, opaque canvas, or too many windows', async () => {
   const { app, cleanup } = makeApp();
   try {

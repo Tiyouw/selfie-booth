@@ -2,6 +2,7 @@
 
 import type { BoothState, FrameRatio, GridCount } from '../lib/types';
 import { boothLayout } from '../lib/layout';
+import { findBuiltinFrame } from '../lib/frames';
 
 function Miniature({ ratio, count }: { ratio: FrameRatio; count: GridCount }) {
   const { w, h, cells } = boothLayout({ frameRatio: ratio, grid: count, frameSrc: null, slots: [], layoutVersion: 2 });
@@ -23,6 +24,7 @@ export default function LayoutChoices({ state, locked, onRatio, onCount }: {
     { ratio: '1:3', label: 'Photo Strip', count: 3 },
   ] as const;
   const counts: GridCount[] = state.frameRatio === '16:9' ? [1, 2, 3, 4] : [1, 2, 3];
+  const builtin = findBuiltinFrame(state.frameSrc);
   const style = (selected: boolean) => `flex flex-col items-center justify-center gap-2 rounded-xl border p-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'border-brand bg-brand/10 text-brand' : 'border-white/10 text-ink-600 hover:border-white/30'}`;
   return (
     <>
@@ -37,7 +39,7 @@ export default function LayoutChoices({ state, locked, onRatio, onCount }: {
       </div>
       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${counts.length}, minmax(0, 1fr))` }}>
         {counts.map((count) => (
-          <button key={count} type="button" disabled={locked} aria-pressed={state.grid === count}
+          <button key={count} type="button" disabled={locked || (!!builtin?.grid && count !== builtin.grid)} aria-pressed={state.grid === count}
             onClick={() => onCount(count)} className={style(state.grid === count)}>
             <Miniature ratio={state.frameRatio} count={count} /><span>{count} Foto</span>
           </button>
@@ -45,6 +47,7 @@ export default function LayoutChoices({ state, locked, onRatio, onCount }: {
       </div>
       <p className="mt-2 text-[11px] text-ink-600">
         {locked ? 'Layout mengikuti frame custom. Pilih frame bawaan atau Tanpa untuk mengubah.'
+          : builtin?.grid ? `Frame ${builtin.name} memakai ${builtin.grid} foto (2×2). Pilih frame lain untuk mengubah jumlah foto.`
           : state.frameRatio === '16:9' ? 'Rekomendasi: 4 foto untuk susunan 2×2 yang simetris.'
           : state.frameRatio === '1:3' ? 'Rekomendasi: 3 foto untuk strip vertikal bergaya photobooth.'
           : 'Foto tersusun vertikal, cocok untuk layar ponsel dan Stories.'}

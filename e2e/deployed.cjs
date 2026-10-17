@@ -97,6 +97,10 @@ async function download(page, button) {
     await page.getByRole('button', { name: 'Perbesar', exact: true }).click();
     await until(() => draft(page), value => value?.s[0]?.[1] === 1.1);
     await page.reload();
+    const classic = page.getByRole('button', { name: 'Klasik', exact: true });
+    const framePanel = page.locator('details').filter({ has: classic });
+    if (!(await framePanel.evaluate(el => el.open))) await framePanel.locator('summary').click();
+    await classic.click();
     await page.getByRole('button', { name: '1 Foto', exact: true }).click();
     await until(() => draft(page), value => value?.g === 1 && value.s[0][1] === 1.1);
     const button = page.locator('header').getByRole('button', { name: 'Download PNG', exact: true });

@@ -33,6 +33,32 @@ test('new states have four stable slots and new layout semantics', () => {
   assert.equal(hasPhotos(state), false);
 });
 
+test('new sessions use the four-photo Expo frame while explicit generic layouts remain flexible', () => {
+  const state = defaultState();
+  assert.equal(state.grid, 4);
+  assert.equal(state.frameRatio, '16:9');
+  assert.equal(state.frameSrc, '/frames/expo-2026-16x9.png');
+  const windows = [
+    { x: 40, y: 40, w: 906, h: 486 }, { x: 974, y: 40, w: 906, h: 486 },
+    { x: 40, y: 554, w: 906, h: 486 }, { x: 974, y: 554, w: 906, h: 486 },
+  ];
+  // The proportional grid gap can extend half a pixel under the opaque divider.
+  boothLayout(state).cells.forEach((cell, i) => {
+    for (const key of ['x', 'y', 'w', 'h']) assert.ok(Math.abs(cell[key] - windows[i][key]) <= 0.5);
+  });
+  assert.deepEqual(decodeState(encodeState(state)), state);
+  assert.equal(defaultState(2).frameSrc, '/frames/klasik-16x9.svg');
+});
+
+test('Expo payloads and legacy draft suffixes cannot override the four fixed windows', (t) => {
+  const entries = storage(t);
+  const payload = { v: 3, l: 1, f: '/frames/expo-2026-16x9.png', r: '1:3', g: 2, i: [99, 99, 99, 99], k: 2, s: [] };
+  const state = sanitizeState(payload);
+  assert.deepEqual(state, defaultState());
+  entries.set(draftKey, encodeRaw(payload) + '|2');
+  assert.deepEqual(loadDraft(), defaultState());
+});
+
 test('v3 share round-trip keeps visible transforms but never hidden photos', () => {
   const state = filled(2);
   const encoded = encodeState(state);

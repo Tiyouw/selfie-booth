@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'HIMASIF Booth',
+  title: 'HIMASIF Booth | Expo 2026',
   description:
-    'Photobooth web HIMASIF: selfie, susun foto di frame custom, download PNG, dan share link.',
+    'Abadikan Expo 2026 bersama HIMASIF. Ambil empat foto, gunakan frame Expo, lalu unduh dan bagikan momenmu.',
 };
 
 export const viewport: Viewport = {

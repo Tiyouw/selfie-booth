@@ -36,7 +36,7 @@ export function buildTemplateGuide(state: BoothState): string {
 </g>`;
   }).join('\n');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Helvetica, Arial, sans-serif">
-<title>Panduan template Selfie Booth — ${w} × ${h}, ${state.grid} foto</title>
+<title>Panduan template HIMASIF Booth — ${w} × ${h}, ${state.grid} foto</title>
 <desc>Koordinat dalam piksel ukuran ekspor, dihitung dari sudut kiri atas. Area aman 24 px direkomendasikan untuk teks dan logo, bukan bleed cetak. Kotak biru adalah jendela foto transparan. Hapus semua anotasi panduan sebelum mengekspor desain sebagai PNG.</desc>
 <metadata id="selfie-booth-template">${metadata}</metadata>
 <rect width="${w}" height="${h}" fill="#e2e8f0"/>
@@ -57,7 +57,7 @@ function filename(state: BoothState, kind: 'panduan.svg' | 'dasar.png'): string 
   const inset = photoInset(state, w, h);
   const frameId = findBuiltinFrame(state.frameSrc)?.id ?? (state.frameSrc ? 'kustom' : 'tanpa-bingkai');
   const margins = [inset.top, inset.right, inset.bottom, inset.left].join('-');
-  return `selfie-booth-${state.frameRatio.replace(':', 'x')}-${state.grid}-foto-${frameId}-inset-${margins}-v${state.layoutVersion ?? 1}-${kind}`;
+  return `himasif-booth-${state.frameRatio.replace(':', 'x')}-${state.grid}-foto-${frameId}-inset-${margins}-v${state.layoutVersion ?? 1}-${kind}`;
 }
 
 export function downloadTemplateGuide(state: BoothState): void {
