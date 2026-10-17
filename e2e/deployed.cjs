@@ -97,9 +97,13 @@ async function download(page, button) {
     await page.getByRole('button', { name: 'Perbesar', exact: true }).click();
     await until(() => draft(page), value => value?.s[0]?.[1] === 1.1);
     await page.reload();
-    const classic = page.getByRole('button', { name: 'Klasik', exact: true });
-    const framePanel = page.locator('details').filter({ has: classic });
+    // Buttons inside a closed <details> are not exposed to role queries, so
+    // expand the Frame panel (panels are ordered Layout/Frame/Foto/Simpan)
+    // before looking up the frame tiles.
+    const framePanel = page.locator('details').nth(1);
     if (!(await framePanel.evaluate(el => el.open))) await framePanel.locator('summary').click();
+    await page.waitForTimeout(500);
+    const classic = page.getByRole('button', { name: 'Klasik', exact: true });
     await classic.click();
     await page.getByRole('button', { name: '1 Foto', exact: true }).click();
     await until(() => draft(page), value => value?.g === 1 && value.s[0][1] === 1.1);
