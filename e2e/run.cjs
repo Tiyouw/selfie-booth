@@ -241,6 +241,13 @@ async function test(name, fn, options = {}) {
       page.getByRole("button", { name: "3 Foto", exact: true }),
     );
     await page.getByRole("button", { name: "3 Foto", exact: true }).waitFor();
+    // Existing generic-layout cases opt into the flexible classic frame.
+    // Event cases exercise the real new-session default without this setup.
+    if (!options.eventDefault) {
+      await page.getByRole("button", { name: "Klasik", exact: true }).click();
+      await page.getByRole("button", { name: "3 Foto", exact: true }).click();
+      await until(() => draft(page), (d) => d?.g === 3 && d?.f === "/frames/klasik-16x9.svg");
+    }
     await Promise.race([
       fn(page, context),
       new Promise((_, reject) => {
@@ -284,6 +291,69 @@ async function test(name, fn, options = {}) {
       "--use-fake-ui-for-media-stream",
     ],
   });
+  await test("Expo default frame, four windows, branded export and viewer", async (page, context) => {
+    const expo = "/frames/expo-2026-16x9.png";
+    assert.equal(await page.title(), "HIMASIF Booth | Expo 2026");
+    assert.equal((await draft(page)).f, expo);
+    assert.equal((await draft(page)).g, 4);
+    assert.equal(await page.getByRole("button", { name: "2 Foto", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Portrait 9:16" }).isEnabled(), true);
+    await page.getByRole("button", { name: "Klasik", exact: true }).click();
+    await page.getByRole("button", { name: "2 Foto", exact: true }).click();
+    await until(() => draft(page), (d) => d?.g === 2);
+    await page.getByRole("button", { name: "Expo 2026", exact: true }).click();
+    await until(() => draft(page), (d) => d?.g === 4 && d?.f === expo);
+    const colors = ["#ee2222", "#22ee22", "#2222ee", "#eeee22"];
+    for (let i = 0; i < 4; i++) await fillPhoto(page, i, colors[i]);
+    await page.reload();
+    await until(() => draft(page), (d) => d?.g === 4 && d?.f === expo);
+    const [file] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("header").getByRole("button", { name: "Download PNG", exact: true }).click(),
+    ]);
+    assert.match(file.suggestedFilename(), /^himasif-booth-.*\.png$/);
+    const png = await fs.readFile(await file.path());
+    await fs.writeFile(path.join(out, "expo-2026-result.png"), png);
+    const image = await pngInfo(png);
+    assert.equal(image.width, 1920);
+    assert.equal(image.height, 1080);
+    const samples = [[300, 250], [1500, 250], [300, 800], [1500, 800]].map(([x, y]) => image.pixel(x, y));
+    assert.ok(samples[0][0] > samples[0][1] + 30, "first photo must be red");
+    assert.ok(samples[1][1] > samples[1][0] + 30, "second photo must be green");
+    assert.ok(samples[2][2] > samples[2][0] + 30, "third photo must be blue");
+    assert.ok(samples[3][0] > samples[3][2] + 30 && samples[3][1] > samples[3][2] + 30, "fourth photo must be yellow");
+    await page.screenshot({ path: path.join(out, "expo-2026-desktop.png"), fullPage: true });
+    await page.locator("header").getByRole("button", { name: "Bagikan", exact: true }).click();
+    const link = page.getByRole("textbox", { name: "Link share" });
+    await link.waitFor({ timeout: 30000 });
+    const url = await link.inputValue();
+    const id = new URL(url).pathname.split("/").pop();
+    const saved = await (await fetch(api + "/v1/designs/" + id)).json();
+    assert.equal(saved.f, expo);
+    assert.equal(saved.g, 4);
+    const og = await pngInfo(Buffer.from(await (await fetch(api + "/v1/designs/" + id + "/og.png")).arrayBuffer()));
+    const border = og.pixel(Math.round(960 * og.width / 1920), Math.round(100 * og.height / 1080));
+    assert.ok(border[1] > 180 && border[2] < 80, "server must draw the green event divider");
+    const viewer = await context.newPage();
+    await viewer.goto(url);
+    await viewer.getByRole("heading", { name: "HIMASIF Booth" }).waitFor();
+    assert.equal(await viewer.title(), "HIMASIF Booth | Expo 2026");
+  }, { eventDefault: true });
+
+  await test("Expo mobile layout, ratio switching and reset", async (page) => {
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "mobile page overflows horizontally");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: path.join(out, "expo-2026-mobile.png"), fullPage: true });
+    await page.getByRole("button", { name: "Portrait 9:16" }).click();
+    await until(() => draft(page), (d) => d?.r === "9:16" && d?.g === 3 && d?.f === null);
+    await page.getByRole("button", { name: "2 Foto", exact: true }).click();
+    await until(() => draft(page), (d) => d?.g === 2);
+    await page.reload();
+    assert.equal((await draft(page)).g, 2, "existing drafts must not be replaced by the event default");
+    await page.locator("header").getByRole("button", { name: "Mulai baru" }).click();
+    await until(() => draft(page), (d) => d?.f === "/frames/expo-2026-16x9.png" && d?.g === 4);
+  }, { eventDefault: true, viewport: { width: 320, height: 740 } });
+
   await test("photo editing, hidden slots, and draft restore", async (page) => {
     await page.getByRole("button", { name: "4 Foto", exact: true }).click();
     for (let i = 0; i < 4; i++)
@@ -424,7 +494,7 @@ async function test(name, fn, options = {}) {
       .click();
     await until(
       () => draft(page),
-      (d) => d?.f === "/frames/klasik-16x9.svg",
+      (d) => d?.f === "/frames/expo-2026-16x9.png" && d?.g === 4,
     );
     await page.reload();
     await expandPanels(

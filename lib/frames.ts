@@ -1,4 +1,4 @@
-import type { FrameRatio, Inset } from './types';
+import type { FrameRatio, GridCount, Inset } from './types';
 
 /**
  * Built-in frame registry.
@@ -15,11 +15,21 @@ export interface BuiltinFrame {
   ratio: FrameRatio;
   src: string;
   inset: Inset;
+  /** Artwork with separate photo windows requires this exact count. */
+  grid?: GridCount;
 }
 
 const thin = (v: number): Inset => ({ top: v, right: v, bottom: v, left: v });
 
 export const BUILTIN_FRAMES: BuiltinFrame[] = [
+  {
+    id: 'expo-2026-16x9',
+    name: 'Expo 2026',
+    ratio: '16:9',
+    src: '/frames/expo-2026-16x9.png',
+    inset: thin(40),
+    grid: 4,
+  },
   {
     id: 'klasik-16x9',
     name: 'Klasik',

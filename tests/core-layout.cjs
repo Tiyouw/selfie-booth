@@ -75,9 +75,13 @@ test('custom inset takes precedence and is shared by layout', () => {
   assert.deepEqual(cells, gridLayout(3, 640, 1920, inset, 16, true, 2));
 });
 
-test('each design has all ratios, with generated strip artwork and header/footer room', () => {
-  assert.equal(BUILTIN_FRAMES.length, 9);
-  for (const ratio of ['16:9', '9:16', '1:3']) assert.equal(framesForRatio(ratio).length, 3);
+test('event artwork joins flexible designs with all ratios and strip header/footer room', () => {
+  assert.equal(BUILTIN_FRAMES.length, 10);
+  assert.equal(framesForRatio('16:9').length, 4);
+  for (const ratio of ['9:16', '1:3']) assert.equal(framesForRatio(ratio).length, 3);
+  const expo = BUILTIN_FRAMES.find((frame) => frame.id === 'expo-2026-16x9');
+  assert.equal(expo.grid, 4);
+  assert.equal(frameVariant(expo.src, '9:16'), null);
   for (const frame of framesForRatio('1:3')) {
     const { inset } = frame;
     assert.ok(inset.top >= 120 && inset.bottom >= 160);

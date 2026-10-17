@@ -75,7 +75,7 @@ test('guide preserves legacy and custom-template geometry', () => {
 test('SVG download filename includes ratio, grid, design and all four insets', async (t) => {
   const { downloads, blobs, revoke } = browser(t);
   downloadTemplateGuide({ ...defaultState(3), frameRatio: '1:3', frameSrc: '/frames/klasik-1x3.svg' });
-  assert.equal(downloads[0].filename, 'selfie-booth-1x3-3-foto-klasik-1x3-inset-180-24-180-24-v2-panduan.svg');
+  assert.equal(downloads[0].filename, 'himasif-booth-1x3-3-foto-klasik-1x3-inset-180-24-180-24-v2-panduan.svg');
   assert.equal(blobs[0].type, 'image/svg+xml;charset=utf-8');
   assert.ok((await blobs[0].text()).includes('<svg'));
   assert.equal(revoke.mock.callCount(), 1);
@@ -93,7 +93,7 @@ test('PNG fills borders and gaps uniformly and clears only exact photo windows',
     ...cells.map(({ x, y, w, h }) => ['clearRect', x, y, w, h]),
   ]);
   assert.equal(blobs[0].type, 'image/png');
-  assert.equal(downloads[0].filename, 'selfie-booth-1x3-3-foto-polaroid-1x3-inset-144-28-240-28-v2-dasar.png');
+  assert.equal(downloads[0].filename, 'himasif-booth-1x3-3-foto-polaroid-1x3-inset-144-28-240-28-v2-dasar.png');
 });
 
 test('guide names the base frame and shows the gap and every asymmetric outer inset', () => {

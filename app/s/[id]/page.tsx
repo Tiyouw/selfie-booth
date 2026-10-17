@@ -35,8 +35,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { id } = await params;
   const og = validId(id) ? `${API}/v1/designs/${encodeURIComponent(id)}/og.png` : '';
   return {
-    title: 'Selfie Booth',
-    description: 'Hasil strip selfie booth — buka untuk mengunduh.',
+    title: 'HIMASIF Booth | Expo 2026',
+    description: 'Momen Expo 2026 bersama HIMASIF — buka untuk mengunduh dan membagikan foto.',
     openGraph: og ? { images: [{ url: og }], type: 'website' } : undefined,
     twitter: og ? { card: 'summary_large_image', images: [og] } : undefined,
   };
@@ -52,10 +52,14 @@ export default async function SharedDesignPage({ params }: PageProps) {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-5 p-5">
+      <header className="text-center">
+        <p className="mb-2 text-xs font-semibold tracking-[0.2em] text-lime-300">EXPO 2026</p>
+        <h1 className="text-xl font-bold">HIMASIF Booth</h1>
+      </header>
       {/* eslint-disable-next-line @next/next/no-img-element -- cross-origin OG asset, not part of the bundler */}
       <img
         src={og}
-        alt="Strip selfie booth"
+        alt="Hasil foto HIMASIF Booth"
         className="w-full rounded-xl border border-white/10 bg-ink-900 shadow-2xl"
       />
       <ViewerActions state={design.state} gifUrl={design.gifUrl} editorUrl={editorUrl} />

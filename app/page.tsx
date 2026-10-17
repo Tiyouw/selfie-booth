@@ -83,7 +83,7 @@ import {
 import AddFrameModal from "../components/AddFrameModal";
 
 export default function Home() {
-  const [state, setState] = useState<BoothState>(() => defaultState(3));
+  const [state, setState] = useState<BoothState>(() => defaultState());
   const [hydrated, setHydrated] = useState(false);
   const [draftSaved, setDraftSaved] = useState<boolean | null>(null);
   const [activeSlot, setActiveSlot] = useState(0);
@@ -230,6 +230,8 @@ export default function Home() {
   );
 
   const setGrid = useCallback((grid: GridCount) => {
+    const fixedGrid = findBuiltinFrame(currentState.current.frameSrc)?.grid;
+    if (fixedGrid && grid !== fixedGrid) return;
     setState((s) => ({ ...s, grid, layoutVersion: 2 }));
     setActiveSlot((a) => Math.min(a, grid - 1));
   }, []);
@@ -261,6 +263,8 @@ export default function Home() {
         ...s,
         frameSrc: src,
         frameRatio: builtin ? builtin.ratio : s.frameRatio,
+        grid: builtin?.grid ?? s.grid,
+        layoutVersion: builtin?.grid ? 2 : s.layoutVersion,
         frameInset: undefined,
         frameGrid: undefined,
       };
@@ -525,7 +529,7 @@ export default function Home() {
     frameRequest.current++;
     shareRequest.current++;
     clearDraft();
-    setState(defaultState(3));
+    setState(defaultState());
     setActiveSlot(0);
     setShareLink(null);
   }, [state]);
@@ -534,7 +538,7 @@ export default function Home() {
     setBusy("download");
     try {
       const blob = await renderBoothBlob(state);
-      downloadBlob(blob, `selfie-booth-${Date.now()}.png`);
+      downloadBlob(blob, `himasif-booth-${Date.now()}.png`);
       show("PNG berhasil diunduh", "success");
     } catch (e) {
       console.error(e);
@@ -553,9 +557,9 @@ export default function Home() {
     setBusy("share");
     try {
       const blob = await renderBoothBlob(state);
-      const file = new File([blob], "selfie-booth.png", { type: "image/png" });
+      const file = new File([blob], "himasif-booth-expo-2026.png", { type: "image/png" });
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Selfie Booth" });
+        await navigator.share({ files: [file], title: "HIMASIF Booth | Expo 2026" });
       } else {
         downloadBlob(blob, file.name);
         show("Share file tidak didukung, PNG diunduh", "info");
@@ -572,7 +576,7 @@ export default function Home() {
     setBusy("gif");
     try {
       const blob = await renderBoothGifBlob(state);
-      downloadBlob(blob, `selfie-booth-${Date.now()}.gif`);
+      downloadBlob(blob, `himasif-booth-${Date.now()}.gif`);
       show("GIF berhasil diunduh", "success");
     } catch (e) {
       console.error(e);
@@ -586,9 +590,9 @@ export default function Home() {
     setBusy("gif");
     try {
       const blob = await renderBoothGifBlob(state);
-      const file = new File([blob], "selfie-booth.gif", { type: "image/gif" });
+      const file = new File([blob], "himasif-booth-expo-2026.gif", { type: "image/gif" });
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Selfie Booth" });
+        await navigator.share({ files: [file], title: "HIMASIF Booth | Expo 2026" });
       } else {
         downloadBlob(blob, file.name);
         show("Share file tidak didukung, GIF diunduh", "info");
@@ -678,22 +682,22 @@ export default function Home() {
       aria-busy={!hydrated}
     >
       <header className="sticky top-0 z-30 border-b border-white/5 bg-ink-950/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-3 sm:px-5">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg sm:h-9 sm:w-9">
               <Image
-                src="assets/himasif.png"
-                alt="Logo Selfie Booth"
+                src="/assets/himasif.png"
+                alt="Logo HIMASIF"
                 width={36}
                 height={36}
                 className="h-full w-full object-contain"
               />
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-none">
+              <h1 className="whitespace-nowrap text-sm font-bold leading-none sm:text-lg">
                 HIMASIF<span className="text-gradient"> Booth</span>
               </h1>
-              <p className="text-[11px] text-ink-600">by MediatekAstra</p>
+              <p className="text-[10px] text-ink-600 sm:text-[11px]">Expo 2026 · by MediatekAstra</p>
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
@@ -734,6 +738,17 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      <section aria-label="Expo 2026" className="mx-auto flex max-w-6xl items-center gap-4 px-5 pt-6">
+        <div className="shrink-0 border-l-4 border-lime-400 pl-3 text-lime-300" aria-hidden="true">
+          <span className="block text-xs font-bold tracking-[0.2em]">EXPO</span>
+          <span className="block text-3xl font-black leading-none tracking-tight">2026</span>
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold sm:text-base">Empat pose, satu momen.</h2>
+          <p className="mt-1 text-xs text-ink-600 sm:text-sm">Abadikan keseruan Expo 2026 bersama HIMASIF.</p>
+        </div>
+      </section>
 
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-5 py-6 lg:grid-cols-[1fr_360px]">
         {/* Preview */}

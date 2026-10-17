@@ -23,7 +23,7 @@ export default function ViewerActions({ state, gifUrl, editorUrl }: ViewerAction
     setError(false);
     try {
       const blob = await renderBoothBlob(state);
-      downloadBlob(blob, `selfie-booth-${Date.now()}.png`);
+      downloadBlob(blob, `himasif-booth-${Date.now()}.png`);
     } catch {
       setError(true);
     } finally {
@@ -38,7 +38,7 @@ export default function ViewerActions({ state, gifUrl, editorUrl }: ViewerAction
     try {
       const res = await fetch(gifUrl);
       if (!res.ok) throw new Error('gagal memuat GIF');
-      downloadBlob(await res.blob(), `selfie-booth-${Date.now()}.gif`);
+      downloadBlob(await res.blob(), `himasif-booth-${Date.now()}.gif`);
     } catch {
       setError(true);
     } finally {
