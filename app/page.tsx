@@ -23,7 +23,12 @@ import {
 } from "../lib/state";
 import { renderBoothBlob } from "../lib/render";
 import { renderBoothGifBlob } from "../lib/gif";
-import { downloadBlob, fileToFrame, fileToPhotoDataURL } from "../lib/image";
+import {
+  downloadBlob,
+  fileToFrame,
+  fileToPhotoDataURL,
+  prepareFrameSource,
+} from "../lib/image";
 import Image from "next/image";
 import {
   addFrameToLibrary,
@@ -421,22 +426,29 @@ export default function Home() {
     [show, frameCode],
   );
 
-  const applySavedFrame = useCallback((frame: SavedFrame) => {
-    frameRequest.current++;
-    setState((s) => {
-      if (frame.ratio !== s.frameRatio) return s;
-      return {
+  const applySavedFrame = useCallback(async (frame: SavedFrame) => {
+    const request = ++frameRequest.current;
+    try {
+      const measured = await prepareFrameSource(frame.src, frame.ratio);
+      if (
+        frameRequest.current !== request ||
+        currentState.current.frameRatio !== frame.ratio
+      ) return;
+      const grid = measured.windowCount as GridCount;
+      setState((s) => ({
         ...s,
         frameSrc: frame.src,
         frameRatio: frame.ratio,
-        grid: frame.grid,
-        frameGrid: frame.grid,
-        frameInset: frame.inset ?? undefined,
+        grid,
+        frameGrid: grid,
+        frameInset: measured.inset ?? undefined,
         layoutVersion: 2,
-      };
-    });
-    setActiveSlot((a) => Math.min(a, frame.grid - 1));
-  }, []);
+      }));
+      setActiveSlot((a) => Math.min(a, grid - 1));
+    } catch (err) {
+      if (frameRequest.current === request) show((err as Error).message, "error");
+    }
+  }, [show]);
 
   const removeSavedFrame = useCallback(
     (id: string) => {
@@ -453,25 +465,27 @@ export default function Home() {
         const src =
           communitySources.current.get(frame.id) ??
           (await communityFrameDataURL(frame));
+        const measured = await prepareFrameSource(src, frame.ratio);
         if (
           frameRequest.current !== request ||
           currentState.current.frameRatio !== frame.ratio
         )
           return;
         communitySources.current.set(frame.id, src);
+        const grid = measured.windowCount as GridCount;
         setState((s) => {
           if (frame.ratio !== s.frameRatio) return s;
           return {
             ...s,
             frameSrc: src,
             frameRatio: frame.ratio,
-            grid: frame.grid,
-            frameGrid: frame.grid,
-            frameInset: frame.inset ?? undefined,
+            grid,
+            frameGrid: grid,
+            frameInset: measured.inset ?? undefined,
             layoutVersion: 2,
           };
         });
-        setActiveSlot((a) => Math.min(a, frame.grid - 1));
+        setActiveSlot((a) => Math.min(a, grid - 1));
       } catch (err) {
         if (frameRequest.current === request)
           show((err as Error).message, "error");

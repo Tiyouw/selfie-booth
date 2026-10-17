@@ -1,10 +1,12 @@
 import type { Inset, Rect } from './types';
 
-/** Alpha below this counts as a transparent photo window. */
-const ALPHA_MAX = 16;
+/** Photo windows may contain a tint/effect at up to 50% opacity (128/255).
+ * Near-opaque borders and artwork must still separate neighboring windows.
+ */
+const ALPHA_MAX = 128;
 
 /**
- * Bounding boxes of the sizeable fully-transparent regions in an RGBA buffer —
+ * Bounding boxes of sizeable transparent or semi-transparent regions in an RGBA buffer —
  * the photo windows of an uploaded frame — sorted top-to-bottom, then
  * left-to-right. Small stray transparent pixels (holes in decoration, dots)
  * are ignored via a minimum-area threshold.

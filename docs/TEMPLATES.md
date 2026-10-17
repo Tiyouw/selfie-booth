@@ -13,6 +13,22 @@ Old shared links and local drafts retain their original asymmetric portrait-thre
 
 ## Persistence
 
+Photo windows may also contain a semi-transparent tint or effect: pixels with
+alpha up to 128/255 (about 50% opacity) count toward a window. Keep borders and
+dividers opaque enough to separate the windows. Detection only reads alpha;
+it does not erase or recolor the artwork. This supports four-window landscape
+overlays such as tinted event frames without mistaking small, fully clear
+decorative cutouts for the only photo windows. Fully transparent windows remain
+the safest choice; heavier tints may not be recognized.
+
+When selecting an existing local or community frame, the client remeasures its
+PNG instead of trusting a previously stored photo count. Entries uploaded with
+the older clear-pixels-only detector therefore recover their actual layout on
+selection. Existing drafts keep their snapshot until the frame is reselected;
+the corrected layout then persists through draft save and reload. Deploy the
+frontend and API together so newly uploaded collection records also store the
+correct count.
+
 Uploaded frames are also kept in a per-device frame library under the `selfie-booth:frames:v1` localStorage key (max 12 entries; same-src uploads refresh the existing entry). The library survives refreshes and "Mulai baru" by design. The Frame panel lists library frames for the currently selected ratio with a delete button per entry; picking one restores its measured geometry and photo count. If the storage quota is exceeded, the frame is still applied to the design but not added to the library, and a toast explains why.
 
 ## Community collection

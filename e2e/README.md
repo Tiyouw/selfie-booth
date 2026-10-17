@@ -10,6 +10,13 @@ Checks exercise real browser uploads, layouts and hidden slots, draft recovery, 
 
 Results, failure screenshots, and service logs are written under the ignored `.hoplite/artifacts/e2e/` directory. The runner exits unsuccessfully if any check fails. Use `E2E_FILTER='camera|mobile' npm run test:e2e` to select cases when diagnosing a specific failure.
 
+The `tinted four-photo` case checks semi-transparent landscape windows, upload
+metadata, reselection from legacy community/local records, draft reload, and
+four distinct photos in the exported PNG. By default it generates a tinted PNG
+with no fully clear pixels. Set `E2E_FRAME_FILE` to a local 1920×1080 four-window
+frame to reproduce a reported artwork without committing that image. The run
+uses its isolated local API and test access code, never production credentials.
+
 ## Deployed smoke checks
 
 After deployment, explicitly provide the HTTPS frontend and API URLs:

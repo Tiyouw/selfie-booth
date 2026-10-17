@@ -443,6 +443,61 @@ async function test(name, fn, options = {}) {
     );
     assert.equal((await pngInfo(template)).width, 1920);
   });
+  await test("tinted four-photo frame upload, stale collections, and export", async (page) => {
+    const c = createCanvas(1920, 1080), ctx = c.getContext("2d");
+    ctx.fillStyle = "#aaff00";
+    ctx.fillRect(0, 0, 1920, 1080);
+    for (const [x, y] of [[40, 40], [974, 40], [40, 554], [974, 554]]) {
+      ctx.clearRect(x, y, 906, 486);
+      ctx.fillStyle = "rgba(20, 15, 35, 0.3)";
+      ctx.fillRect(x, y, 906, 486);
+    }
+    // Optional local reproduction with the reported artwork; never publish it.
+    const buffer = process.env.E2E_FRAME_FILE
+      ? await fs.readFile(process.env.E2E_FRAME_FILE) : c.encodeSync("png");
+    const name = "Tinted four photos";
+    await unlockFrameUpload(page);
+    await page.getByLabel("Upload frame PNG", { exact: true }).setInputFiles({ name: name + ".png", mimeType: "image/png", buffer });
+    await until(() => draft(page), d => d?.g === 4 && d?.k === 4);
+    assert.deepEqual((await draft(page)).i, [40, 40, 40, 40]);
+    const collection = await (await fetch(api + "/v1/frames?ratio=16%3A9")).json();
+    const record = collection.frames.find(f => f.name === name);
+    assert.equal(record.grid, 4, "API must agree with browser detection");
+    await page.getByRole("button", { name: "Tanpa", exact: true }).click();
+    // Old server records may still claim two windows; selecting must remeasure.
+    await page.route(api + "/v1/frames?*", async route => {
+      const response = await route.fetch(), body = await response.json();
+      body.frames = body.frames.map(f => f.id === record.id ? { ...f, grid: 2 } : f);
+      await route.fulfill({ response, json: body });
+    });
+    await page.reload();
+    await expandPanels(page, page.getByRole("button", { name, exact: true }));
+    await page.getByRole("button", { name, exact: true }).click();
+    await until(() => draft(page), d => d?.g === 4 && d?.k === 4);
+    const source = (await draft(page)).f;
+    // A legacy per-device entry must also recover its real four-window layout.
+    await page.evaluate(src => localStorage.setItem("selfie-booth:frames:v1", JSON.stringify([
+      { id: "old-tinted", name: "Legacy tinted", src, ratio: "16:9", grid: 2,
+        inset: { top: 40, right: 40, bottom: 40, left: 40 }, createdAt: 1 },
+    ])), source);
+    await page.getByRole("button", { name: "Tanpa", exact: true }).click();
+    await page.reload();
+    await expandPanels(page, page.getByRole("button", { name: "Legacy tinted", exact: true }));
+    await page.getByRole("button", { name: "Legacy tinted", exact: true }).click();
+    await until(() => draft(page), d => d?.g === 4 && d?.k === 4);
+    for (const [i, color] of ["#ff0000", "#00ff00", "#0000ff", "#ffffff"].entries()) await fillPhoto(page, i, color);
+    await page.reload();
+    await until(() => draft(page), d => d?.g === 4 && d.s.slice(0, 4).every(s => s[0]));
+    const exported = await download(page, page.locator("header").getByRole("button", { name: "Download PNG", exact: true }));
+    await fs.writeFile(path.join(out, "tinted-four-photo-result.png"), exported);
+    const image = await pngInfo(exported);
+    const red = image.pixel(400, 300), green = image.pixel(1400, 300), blue = image.pixel(400, 800), white = image.pixel(1400, 800);
+    assert.equal(image.width, 1920); assert.equal(image.height, 1080);
+    assert.ok(red[0] > red[1] + 70 && red[0] > red[2] + 70);
+    assert.ok(green[1] > green[0] + 70 && green[1] > green[2] + 70);
+    assert.ok(blue[2] > blue[0] + 70 && blue[2] > blue[1] + 70);
+    assert.ok(white.slice(0, 3).every(channel => channel > 140));
+  });
   await test("community frame survives reload and remote sharing", async (page) => {
     const name = "Community E2E " + Date.now();
     await unlockFrameUpload(page);

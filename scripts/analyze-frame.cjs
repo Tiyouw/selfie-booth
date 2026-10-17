@@ -47,8 +47,8 @@ function decodePng(buf) {
   return { w, h, bpp, data: out };
 }
 
-/** Bounding boxes of sizeable fully-transparent regions (4-connectivity). */
-function detectWindows(png, alphaMax = 16) {
+/** Bounding boxes of sizeable transparent/tinted regions (4-connectivity). */
+function detectWindows(png, alphaMax = 128) {
   const { w, h, bpp, data } = png;
   const seen = new Uint8Array(w * h);
   const minArea = Math.floor(w * h * 0.005);
